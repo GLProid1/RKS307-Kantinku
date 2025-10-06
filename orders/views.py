@@ -118,8 +118,8 @@ class MidtransWehboohView(APIView):
         order.paid_at = timezone.now()
         order.meta.setdefault('gateway_notification', []).append(payload)
         order.save(update_fields=['status', 'paid_at', 'meta'])
-        # enqueue notification to tenant/customer
-        # send_order_paid_notification(order.id)
+        # Enqueue notification only after the transaction is successfully committed
+        transaction.on_commit(lambda: send_order_paid_notification.delay(order.id))
         return Response({'detail': 'Order marked paid'}, status=200)
       
       # Handle expired / canceled
@@ -184,6 +184,9 @@ class CashConfirmView(APIView):
       })
       order.meta = meta
       order.save(update_fields=['status', 'paid_at', 'meta'])
+      
+      # Kirim notifikasi setelah pembayaran cash dikonfirmasi dan transaksi DB berhasil.
+      transaction.on_commit(lambda: send_order_paid_notification.delay(order.id))
       
     return Response({
       "detail": "Order dikonfirmasi lunas.",

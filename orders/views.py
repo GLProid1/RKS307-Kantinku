@@ -39,32 +39,53 @@ class CreateOrderView(APIView):
     if phone:
       customer, _ = Customer.objects.get_or_create(phone=phone)
       
+    try:
+      with transaction.atomic():
+        # 1. Kunci baris menu item yang akan di-update untuk mencegah race condition
+        items_data = data['items']
+        menu_item_ids = [item['menu_item'] for item in items_data]
+        menu_items_to_update = MenuItem.objects.select_for_update().filter(pk__in=menu_item_ids, tenant=tenant)
+        
+        menu_items_map = {item.pk: item for item in menu_items_to_update}
 
-    # Create order
-    order = Order.objects.create(
-      tenant=tenant,
-      table=table,
-      customer=customer,
-      payment_method=data['payment_method'],
-      status = 'AWAITING_PAYMENT',
-      expired_at = timezone.now() + timezone.timedelta(minutes=10)
-    )
-    
-    # Create items and compute total
-    total = 0
-    for it in data['items']:
-      menu = get_object_or_404(MenuItem, pk=it['menu_item'], tenant=tenant)
-      io = OrderItem.objects.create(
-        order=order,
-        menu_item=menu,
-        qty=it['qty'],
-        price=menu.price,
-        note=it.get('note', '')
-      )
-      total += io.price * io.qty
-      
-    order.total = total
-    order.save()
+        # 2. Validasi stok sebelum membuat order
+        for item_data in items_data:
+            menu_item = menu_items_map.get(item_data['menu_item'])
+            if not menu_item or not menu_item.available or menu_item.stock < item_data['qty']:
+                raise serializers.ValidationError(f"Stok untuk '{menu_item.name if menu_item else 'item'}' tidak mencukupi atau tidak tersedia.")
+
+        # 3. Buat Order
+        order = Order.objects.create(
+          tenant=tenant, table=table, customer=customer,
+          payment_method=data['payment_method'],
+          status = 'AWAITING_PAYMENT',
+          expired_at = timezone.now() + timezone.timedelta(minutes=10)
+        )
+
+        # 4. Buat OrderItem dan kurangi stok
+        order_items_to_create = []
+        total = 0
+        for item_data in items_data:
+            menu_item = menu_items_map[item_data['menu_item']]
+            
+            order_items_to_create.append(OrderItem(
+                order=order, menu_item=menu_item, qty=item_data['qty'],
+                price=menu_item.price, note=item_data.get('note', '')
+            ))
+            total += menu_item.price * item_data['qty']
+            
+            # Kurangi stok
+            menu_item.stock -= item_data['qty']
+        
+        # 5. Simpan perubahan stok dan buat OrderItem secara bulk
+        MenuItem.objects.bulk_update(menu_items_to_update, ['stock'])
+        OrderItem.objects.bulk_create(order_items_to_create)
+        
+        order.total = total
+        order.save(update_fields=['total'])
+
+    except serializers.ValidationError as e:
+        return Response(e.detail, status=status.HTTP_400_BAD_REQUEST)
     
     # If payment_methods == TRANSFER -> initiate payment (VA/link) and return instructions
     payment_info = None

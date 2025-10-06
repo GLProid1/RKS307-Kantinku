@@ -6,5 +6,5 @@ urlpatterns = [
   path("orders/<int:order_pk>/confirm-cash/", CashConfirmView.as_view(), name='confirm-cash'),
   path("webhooks/payment/", MidtransWehboohView.as_view(), name='payment-webhooks'),
   path('orders/<int:order_pk>/', OrderDetailView.as_view(), name='order-detail'),
-  path('orders/<int:order_pk>/cancel/', CancelOrderView.as_view(), name='cancle-order')
+  path('orders/<int:order_pk>/cancel/', CancelOrderView.as_view(), name='cancel-order')
 ]

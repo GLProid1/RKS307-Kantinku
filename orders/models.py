@@ -23,6 +23,7 @@ class MenuItem(models.Model):
   name = models.CharField(max_length=50)
   price = models.DecimalField(max_digits=12, decimal_places=2)
   available = models.BooleanField(default=True)
+  stock = models.PositiveIntegerField(default=0, help_text="Jumlah stok tersedia. 0 berarti habis.")
   description = models.TextField(blank=True, null=True)
   
   def __str__(self):

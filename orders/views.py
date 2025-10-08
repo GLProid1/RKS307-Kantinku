@@ -250,12 +250,18 @@ class CancelOrderView(APIView):
     # Jika sudah dibayar, maka tidak bisa dibatalkan
     if order.status.upper() == 'PAID':
       return Response({"detail": "Order sudah dibayar, tidak bisa dibatalkan"}, status=status.HTTP_400_BAD_REQUEST)
-    
-    if order.expired_at and timezone.now() > order.expired_at:
-      order.status = 'EXPIRED'
-      order.save(update_fields=['status'])
+
+    # Jika belum dibayar, batalkan dan kembalikan stok
+    if order.status == 'AWAITING_PAYMENT':
+      if order.expired_at and timezone.now() > order.expired_at:
+        order.status = 'EXPIRED'
+        order.save(update_fields=['status'])
       
-    # Jika awaiting payment, maka bisa dibatalkan
-    order.delete()
-    return Response({"detail": "Order berhasil dibatalkan dan dihapus"}, status=status.HTTP_200_OK)
-  
+      order.cancel_and_restock()
+      return Response({"detail": "Order berhasil dibatalkan"}, status=status.HTTP_200_OK)
+    elif order.status == 'EXPIRED':
+      order.status = 'EXPIRED'
+      order.cancel_and_restock()
+      return Response({"detail": "Order kedaluwarsa berhasil dibatalkan"}, status=status.HTTP_200_OK)
+
+    return Response({"detail": f"Order dengan status {order.status} tidak dapat dibatalkan."}, status=status.HTTP_400_BAD_REQUEST)

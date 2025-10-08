@@ -1,9 +1,11 @@
 from django.db import models
 from django.utils import timezone
 from datetime import timedelta
+from django.db import transaction
 import uuid
 import random
 import string
+from django.conf import settings
 
 def generate_references_code(prefix="KNT"):
   ts = timezone.now().strftime("%Y%m%d%H%M%S")
@@ -13,6 +15,7 @@ def generate_references_code(prefix="KNT"):
 class Tenant(models.Model):
   name = models.CharField(max_length=50)
   description = models.TextField(blank=True, null=True)
+  staff = models.ManyToManyField(settings.AUTH_USER_MODEL, related_name='tenants', blank=True)
   active = models.BooleanField(default=True)
   
   def __str__(self):
@@ -83,6 +86,29 @@ class Order(models.Model):
     self.total = total
     self.save(update_fields=['total'])
     return self.total
+
+  def cancel_and_restock(self):
+    """
+    Membatalkan order dan mengembalikan stok item.
+    Hanya berlaku untuk order yang belum dibayar.
+    """
+    if self.status not in ['AWAITING_PAYMENT', 'EXPIRED']:
+      # Tidak bisa membatalkan order yang sudah diproses atau dibayar
+      return False
+
+    with transaction.atomic():
+      # Kunci baris menu item yang akan di-update
+      order_items = self.items.select_related('menu_item').all()
+      menu_items_to_restock = {item.menu_item.id: item.menu_item for item in order_items}
+      
+      for item in order_items:
+        menu_items_to_restock[item.menu_item.id].stock += item.qty
+      
+      MenuItem.objects.bulk_update(menu_items_to_restock.values(), ['stock'])
+      
+      self.status = 'CANCELLED'
+      self.save(update_fields=['status'])
+    return True
   
 class OrderItem(models.Model):
   order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='items')

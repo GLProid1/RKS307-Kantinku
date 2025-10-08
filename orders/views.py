@@ -5,7 +5,7 @@ from django.shortcuts import get_object_or_404
 from .models import Order, OrderItem, Customer, MenuItem, Tenant, Table
 from .serializers import OrderSerializer, OrderCreateSerializer
 from django.utils import timezone
-from .permissions import IsKasir
+from .permissions import IsKasir, IsTenantOwner
 from django.db import transaction
 from .tasks import send_order_paid_notification
 
@@ -265,3 +265,31 @@ class CancelOrderView(APIView):
       return Response({"detail": "Order kedaluwarsa berhasil dibatalkan"}, status=status.HTTP_200_OK)
 
     return Response({"detail": f"Order dengan status {order.status} tidak dapat dibatalkan."}, status=status.HTTP_400_BAD_REQUEST)
+  
+class UpdateOrderStatusView(APIView):
+  """
+    Endpoint untuk Tenant mengubah status order. Hanya user yang memiliki hak
+    yang bisa mengubah status tersebut
+  """
+  # Aturan transisi status yang dimiliki tenant
+  VALID_TRANSITIONS = {
+    'PAID': ['PROCESSING'],
+    'PROCESSING': ['READY'],
+    'READY': ['COMPLETED']
+  }
+  def patch(self, request, order_pk):
+    order = get_object_or_404(Order, pk=order_pk)
+    new_status = request.data.get('status')
+    
+    if not new_status:
+      return Response({"detail": "Field 'status' diperlukan"}, status=status.HTTP_400_BAD_REQUEST)
+    current_status = order.status
+    allowed_next_statues = self.VALID_TRANSITIONS.get(current_status)
+    if not allowed_next_statues or new_status not in allowed_next_statues:
+      return Response({"detail": f"Perubahan dari status '{current_status}' ke '{new_status}' tidak diperbolehkan"})
+    order.status = new_status
+    order.save(update_fields=['status'])
+    
+    # TODO: Kirim notifikasi ke pelanggan bahwa status pesanan berubah
+
+    return Response(OrderSerializer(order).data, status=status.HTTP_200_OK)

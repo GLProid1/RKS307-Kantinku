@@ -1,6 +1,7 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status, permissions
+from rest_framework import generics, serializers
 from django.shortcuts import get_object_or_404
 from .models import Order, OrderItem, Customer, MenuItem, Tenant, Table
 from .serializers import OrderSerializer, OrderCreateSerializer
@@ -293,3 +294,69 @@ class UpdateOrderStatusView(APIView):
     # TODO: Kirim notifikasi ke pelanggan bahwa status pesanan berubah
 
     return Response(OrderSerializer(order).data, status=status.HTTP_200_OK)
+  
+class OrderCreateView(generics.CreateAPIView):
+    serializer_class = OrderCreateSerializer
+    # ... permissions, queryset, dll.
+
+    @transaction.atomic
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        items_data = serializer.validated_data['items']
+        tenant = serializer.validated_data['tenant']
+        
+        # Ambil semua ID menu item untuk dicek sekaligus
+        menu_item_ids = [item['menu_item'] for item in items_data]
+        
+        # Kunci baris menu item untuk mencegah race condition saat stok dikurangi
+        menu_items = MenuItem.objects.select_for_update().filter(
+            id__in=menu_item_ids, 
+            tenant_id=tenant
+        )
+        
+        menu_items_map = {item.id: item for item in menu_items}
+
+        # Validasi stok dan ketersediaan
+        for item_data in items_data:
+            menu_item_id = item_data['menu_item']
+            menu_item_obj = menu_items_map.get(menu_item_id)
+            
+            # Cek apakah item ada di tenant yang benar
+            if not menu_item_obj:
+                raise serializers.ValidationError(
+                    f"Menu item dengan ID {menu_item_id} tidak ditemukan untuk tenant ini."
+                )
+            
+            # Cek ketersediaan dan stok
+            if not menu_item_obj.available:
+                 raise serializers.ValidationError(f"'{menu_item_obj.name}' sedang tidak tersedia.")
+
+            if menu_item_obj.stock < item_data['qty']:
+                raise serializers.ValidationError(
+                    f"Stok untuk '{menu_item_obj.name}' tidak mencukupi. Sisa: {menu_item_obj.stock}."
+                )
+            
+            # Langsung kurangi stok di objek
+            menu_item_obj.stock -= item_data['qty']
+
+        # Simpan semua perubahan stok sekaligus
+        MenuItem.objects.bulk_update(menu_items_map.values(), ['stock'])
+        
+        # Lanjutkan proses pembuatan order oleh DRF
+        # self.perform_create(serializer) akan berjalan setelah ini
+        # Pastikan perform_create Anda menangani penyimpanan order dan order items.
+        
+        return super().create(request, *args, **kwargs)
+    
+class OrderListView(generics.ListAPIView):
+    """
+    View untuk menampilkan daftar semua pesanan.
+    Endpoint ini dilindungi dan hanya bisa diakses oleh Kasir atau Admin.
+    """
+    queryset = Order.objects.prefetch_related(
+        'items', 'items__menu_item', 'tenant', 'table'
+    ).order_by('-created_at')
+    serializer_class = OrderSerializer
+    permission_classes = [IsKasir]

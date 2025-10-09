@@ -48,6 +48,11 @@ class Customer(models.Model):
     return self.phone
   
 class Order(models.Model):
+  ORDER_TYPE_CHOICES = [
+        ('DINE_IN', 'Dine-In'),
+        ('TAKEAWAY', 'Takeaway'),
+    ]
+  
   STATUS_CHOICES = [
     ('AWAITING_PAYMENT', 'Awaiting Payment'),
     ('PAID', 'Paid'),
@@ -68,6 +73,7 @@ class Order(models.Model):
   tenant = models.ForeignKey(Tenant, on_delete=models.PROTECT, related_name='orders')
   customer = models.ForeignKey(Customer, on_delete=models.SET_NULL, null=True, blank=True)
   status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='AWAITING_PAYMENT')
+  order_type = models.CharField(max_length=10, choices=ORDER_TYPE_CHOICES, default='DINE_IN')
   expired_at = models.DateTimeField(null=True, blank=True)
   payment_method = models.CharField(max_length=20, choices=PAYMENT_METHOD_CHOICES)
   total = models.DecimalField(max_digits=14, decimal_places=2, default=0)

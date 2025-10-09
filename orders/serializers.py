@@ -46,6 +46,27 @@ class OrderCreateSerializer(serializers.Serializer):
       raise serializers.ValidationError("Item tidak boleh kosong")
     return data
   
+  def validate(self, data):
+    items = data.get('items')
+    tenant_id = data.get('tenant')
+
+    if not items:
+      raise serializers.ValidationError("Item tidak boleh kosong")
+
+    # Ambil semua ID menu item dari payload
+    item_ids = [item['menu_item'] for item in items]
+    
+    # Cek ke database, apakah semua item tersebut milik tenant yang benar
+    valid_items_count = MenuItem.objects.filter(
+        id__in=item_ids, 
+        tenant_id=tenant_id
+    ).count()
+
+    if valid_items_count != len(item_ids):
+        raise serializers.ValidationError("Terdapat satu atau lebih item yang bukan milik tenant ini.")
+        
+    return data
+  
 class OrderItemSerializer(serializers.ModelSerializer):
   menu_item = MenuItemSerializer()
   

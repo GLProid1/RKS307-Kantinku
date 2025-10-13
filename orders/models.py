@@ -22,15 +22,44 @@ class Tenant(models.Model):
     return self.name
   
 class MenuItem(models.Model):
+  CATEGORY_CHOICES = [
+        ('FOOD', 'Makanan'),
+        ('DRINK', 'Minuman'),
+    ]
   tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, related_name='menu_items')
   name = models.CharField(max_length=50)
   price = models.DecimalField(max_digits=12, decimal_places=2)
+  category = models.CharField(max_length=10, choices=CATEGORY_CHOICES, default='FOOD') # <-- TAMBAHKAN INI
   available = models.BooleanField(default=True)
   stock = models.PositiveIntegerField(default=0, help_text="Jumlah stok tersedia. 0 berarti habis.")
   description = models.TextField(blank=True, null=True)
+  image = models.ImageField(upload_to='menu_images/', default='menu_images/default.png', blank=True)
+  variant_groups = models.ManyToManyField('VariantGroup', blank=True, related_name='menu_items') # <-- TAMBAHKAN INI
   
   def __str__(self):
     return f"{self.name} ({self.tenant.name})"
+  
+class VariantGroup(models.Model):
+    """
+    Grup untuk varian, misal: 'Tingkat Pedas', 'Topping', 'Ukuran'.
+    Setiap grup dimiliki oleh satu tenant.
+    """
+    tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, related_name='variant_groups')
+    name = models.CharField(max_length=50) # Contoh: "Topping"
+
+    def __str__(self):
+        return f"{self.name} - ({self.tenant.name})"
+
+class VariantOption(models.Model):
+    """
+    Pilihan spesifik dalam sebuah grup, misal: 'Keju', 'Telur', 'Level 1'.
+    """
+    group = models.ForeignKey(VariantGroup, on_delete=models.CASCADE, related_name='options')
+    name = models.CharField(max_length=50) # Contoh: "Keju Parut"
+    price = models.DecimalField(max_digits=10, decimal_places=2, default=0, help_text="Harga tambahan untuk opsi ini")
+
+    def __str__(self):
+        return f"{self.name} (+{self.price})"
   
 class Table(models.Model):
   code = models.CharField(max_length=10, unique=True) # di pasang di QR
@@ -122,6 +151,7 @@ class OrderItem(models.Model):
   qty = models.PositiveIntegerField(default=1)
   price = models.DecimalField(max_digits=12, decimal_places=2) # snapshot price
   note = models.CharField(max_length=255, blank=True, null=True)
+  selected_variants = models.ManyToManyField('VariantOption', blank=True)
   
   def __str__(self):
     return f"{self.menu_item.name} x{self.qty} ({self.order.references_code})"
@@ -130,3 +160,8 @@ class OrderItem(models.Model):
     if not self.price:
       self.price = self.menu_item.price
     super().save(*args, **kwargs)
+  
+  def get_subtotal(self):
+        # Menghitung subtotal item termasuk harga varian yang dipilih
+        total_variant_price = sum(variant.price for variant in self.selected_variants.all())
+        return (self.price + total_variant_price) * self.qty

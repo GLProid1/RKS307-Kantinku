@@ -3,12 +3,17 @@ from rest_framework.response import Response
 from rest_framework import status, permissions
 from rest_framework import generics, serializers
 from django.shortcuts import get_object_or_404
-from .models import Order, OrderItem, Customer, MenuItem, Tenant, Table
-from .serializers import OrderSerializer, OrderCreateSerializer
+from .models import Order, OrderItem, Customer, MenuItem, Tenant, Table,VariantOption
+from .serializers import OrderSerializer, OrderCreateSerializer,MenuItemSerializer
 from django.utils import timezone
 from .permissions import IsKasir, IsTenantOwner
 from django.db import transaction
 from .tasks import send_order_paid_notification
+from django.http import HttpResponse
+from django.urls import reverse
+import qrcode
+import io
+
 
 # Placeholder: dummy gateway payment
 def initiate_payment_for_order(order: Order):
@@ -68,19 +73,57 @@ class CreateOrderView(APIView):
         total = 0
         for item_data in items_data:
             menu_item = menu_items_map[item_data['menu_item']]
+
+            order_item_obj = OrderItem(
+                        order=order,
+                        menu_item=menu_item,
+                        qty=item_data['qty'],
+                        price=menu_item.price, # Harga dasar
+                        note=item_data.get('note', '')
+                    )
             
-            order_items_to_create.append(OrderItem(
-                order=order, menu_item=menu_item, qty=item_data['qty'],
-                price=menu_item.price, note=item_data.get('note', '')
-            ))
+            order_items_to_create.append(order_item_obj)
+            variant_ids = item_data.get('variants', [])
+            total_variant_price = 0
+            if variant_ids:
+                        # Validasi bahwa varian yang dipilih memang milik menu tersebut
+                        valid_variants = VariantOption.objects.filter(
+                            id__in=variant_ids,
+                            group__menu_items=menu_item
+                        )
+                        if len(valid_variants) != len(variant_ids):
+                            raise serializers.ValidationError("Terdapat varian yang tidak valid untuk menu yang dipilih.")
+                        
+                        for variant in valid_variants:
+                            total_variant_price += variant.price
             total += menu_item.price * item_data['qty']
             
             # Kurangi stok
             menu_item.stock -= item_data['qty']
+
+            
         
         # 5. Simpan perubahan stok dan buat OrderItem secara bulk
         MenuItem.objects.bulk_update(menu_items_to_update, ['stock'])
-        OrderItem.objects.bulk_create(order_items_to_create)
+        created_items = OrderItem.objects.bulk_create(order_items_to_create)
+
+        # 6. Hubungkan varian ke OrderItem yang baru dibuat
+                # Ini perlu loop terpisah karena bulk_create tidak menangani relasi many-to-many
+        item_variant_relations = []
+        for i, item_data in enumerate(items_data):
+                    variant_ids = item_data.get('variants', [])
+                    if variant_ids:
+                        order_item_id = created_items[i].id
+                        for variant_id in variant_ids:
+                            item_variant_relations.append(
+                                OrderItem.selected_variants.through(
+                                    orderitem_id=order_item_id,
+                                    variantoption_id=variant_id
+                                )
+                            )
+                
+        if item_variant_relations:
+                    OrderItem.selected_variants.through.objects.bulk_create(item_variant_relations)
         
         order.total = total
         order.save(update_fields=['total'])
@@ -360,3 +403,68 @@ class OrderListView(generics.ListAPIView):
     ).order_by('-created_at')
     serializer_class = OrderSerializer
     permission_classes = [IsKasir]
+
+class TableQRCodeView(APIView):
+    """
+    Menghasilkan gambar QR Code untuk sebuah meja spesifik.
+    QR code ini berisi URL untuk frontend yang sudah diisi kode meja.
+    """
+    permission_classes = [permissions.AllowAny] # Bisa diubah sesuai kebutuhan, misal IsKasir
+
+    def get(self, request, table_code):
+        table = get_object_or_404(Table, code=table_code)
+        
+        # Asumsi URL frontend Anda adalah: https://yourfrontend.com/order?table_code=T01
+        # Ganti 'https://yourfrontend.com/order' dengan URL aplikasi frontend Anda.
+        frontend_url = request.build_absolute_uri(reverse('create-order')) + f"?table={table.code}"
+        
+        # Buat QR code
+        qr = qrcode.QRCode(
+            version=1,
+            error_correction=qrcode.constants.ERROR_CORRECT_L,
+            box_size=10,
+            border=4,
+        )
+        qr.add_data(frontend_url)
+        qr.make(fit=True)
+
+        img = qr.make_image(fill_color="black", back_color="white")
+        
+        # Simpan gambar ke buffer di memori
+        buffer = io.BytesIO()
+        img.save(buffer, "PNG")
+        buffer.seek(0)
+        
+        return HttpResponse(buffer, content_type="image/png")
+
+class TakeawayQRCodeView(APIView):
+    """
+    Menghasilkan gambar QR Code untuk pesanan Takeaway per Tenant.
+    QR code ini berisi URL untuk frontend yang sudah diisi ID tenant dan tipe order.
+    """
+    permission_classes = [permissions.AllowAny] # Bisa diubah sesuai kebutuhan
+
+    def get(self, request, tenant_id):
+        tenant = get_object_or_404(Tenant, pk=tenant_id)
+        
+        # Asumsi URL frontend Anda: https://yourfrontend.com/order?tenant=1&type=TAKEAWAY
+        # Ganti 'https://yourfrontend.com/order' dengan URL aplikasi frontend Anda.
+        frontend_url = request.build_absolute_uri(reverse('create-order')) + f"?tenant={tenant.id}&order_type=TAKEAWAY"
+        
+        # Buat QR code
+        qr = qrcode.QRCode(version=1, box_size=10, border=4)
+        qr.add_data(frontend_url)
+        qr.make(fit=True)
+        img = qr.make_image(fill_color="black", back_color="white")
+        
+        # Simpan gambar ke buffer di memori
+        buffer = io.BytesIO()
+        img.save(buffer, "PNG")
+        buffer.seek(0)
+        
+        return HttpResponse(buffer, content_type="image/png")
+    
+class ManageMenuItemView(generics.UpdateAPIView):
+  queryset = MenuItem.objects.all()
+  serializer_class = MenuItemSerializer
+  permission_classes = [IsTenantOwner]

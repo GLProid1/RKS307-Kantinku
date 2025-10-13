@@ -1,10 +1,23 @@
 from rest_framework import serializers
-from .models import Customer, MenuItem, Order, OrderItem, Tenant, Table
+from .models import Customer, MenuItem, Order, OrderItem, Tenant, Table,VariantGroup, VariantOption
 
+class VariantOptionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = VariantOption
+        fields = ['id', 'name', 'price']
+
+class VariantGroupSerializer(serializers.ModelSerializer):
+    options = VariantOptionSerializer(many=True, read_only=True)
+    
+    class Meta:
+        model = VariantGroup
+        fields = ['id', 'name', 'options']
+        
 class MenuItemSerializer(serializers.ModelSerializer):
+  variant_groups = VariantGroupSerializer(many=True, read_only=True)
   class Meta:
     model = MenuItem
-    fields = ['id', 'name', 'price', 'available', 'description']
+    fields = ['id', 'name', 'price', 'available', 'description','image','variant_groups']
     
 class TenantSerializer(serializers.ModelSerializer):
   menu_items = MenuItemSerializer(many=True, read_only=True)
@@ -27,6 +40,9 @@ class OrderItemCreateSerializer(serializers.Serializer):
   menu_item = serializers.IntegerField()
   qty = serializers.IntegerField(min_value=1)
   note = serializers.CharField(required=False, allow_blank=True)
+  variants = serializers.ListField(
+      child=serializers.IntegerField(), required=False
+  )
   
 class OrderCreateSerializer(serializers.Serializer):
   tenant = serializers.IntegerField()
@@ -83,3 +99,5 @@ class OrderSerializer(serializers.ModelSerializer):
   class Meta:
     model = Order
     fields = ['id','uuid', 'references_code', 'tenant', 'table', 'customer', 'status', 'payment_method', 'total', 'items', 'created_at', 'paid_at', 'meta']
+
+

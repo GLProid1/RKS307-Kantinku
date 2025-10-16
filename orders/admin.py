@@ -5,9 +5,16 @@ from django.utils.html import format_html
 
 @admin.register(Tenant)
 class TenantAdminSite(admin.ModelAdmin):
-  list_display = ('name', 'description', 'active')
+  list_display = ('name', 'description', 'active','image_tag')
   search_fields = ('name',)
   list_filter = ('active',)
+  readonly_fields = ('image_tag',)
+
+  def image_tag(self, obj):
+    if obj.image:
+      return format_html('<img src="{}" style="max-width:70px; max-height:70px;" />'.format(obj.image.url))
+    return "No Image"
+  image_tag.short_description = 'Gambar Stand'
   
 @admin.register(Table)
 class TableAdminSite(admin.ModelAdmin):

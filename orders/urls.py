@@ -1,18 +1,51 @@
-# Lokasi: orders/urls.py
-
-from django.urls import path
+# orders/urls.py
+from rest_framework.authtoken.views import obtain_auth_token 
+from django.urls import path, include
+# 1. Impor 'routers' dari rest_framework_nested
+from rest_framework_nested import routers
+from django.conf import settings
+from django.conf.urls.static import static
 from .views import (
+    # View yang sudah ada
     CashConfirmView, CreateOrderView, MidtransWehboohView, 
-    OrderDetailView, UpdateOrderStatusView, CancelOrderView, OrderListView,TableQRCodeView, TakeawayQRCodeView
+    OrderDetailView, UpdateOrderStatusView, CancelOrderView, OrderListView,
+    TableQRCodeView, TakeawayQRCodeView,
+    
+    # View baru yang kita buat
+    UserViewSet, 
+    StandViewSet, 
+    MenuItemViewSet,
+    ReportDashboardAPIView
 )
 
+# 2. Sekarang 'routers' sudah dikenali dan bisa digunakan di sini
+router = routers.DefaultRouter()
+router.register(r'users', UserViewSet, basename='user')
+router.register(r'stands', StandViewSet, basename='stand')
+
+# 3. Router bersarang juga menggunakan 'routers'
+stands_router = routers.NestedDefaultRouter(router, r'stands', lookup='stand')
+stands_router.register(r'menus', MenuItemViewSet, basename='stand-menus')
+
+# Daftar semua URL pattern
 urlpatterns = [
-    path('', OrderListView.as_view(), name='order-list'),
-    path("create/", CreateOrderView.as_view(), name='create-order'),
-    path("<int:order_pk>/", OrderDetailView.as_view(), name='order-detail'),
-    path("<int:order_pk>/confirm-cash/", CashConfirmView.as_view(), name='confirm-cash'),
-    path('<int:order_pk>/cancel/', CancelOrderView.as_view(), name='cancel-order'),
-    path('<int:order_pk>/update-status/', UpdateOrderStatusView.as_view(), name='update-order-status'),
-    path("webhooks/payment/", MidtransWehboohView.as_view(), name='payment-webhooks'),path("tables/<str:table_code>/qr/", TableQRCodeView.as_view(), name='table-qr-code'),
+    path('reports/summary/', ReportDashboardAPIView.as_view(), name='reports-summary'),
+    
+    path("orders/create/", CreateOrderView.as_view(), name='create-order'),
+    path("orders/all/", OrderListView.as_view(), name='order-list'),
+    path("orders/<int:order_pk>/", OrderDetailView.as_view(), name='order-detail'),
+    path("orders/<int:order_pk>/confirm-cash/", CashConfirmView.as_view(), name='confirm-cash'),
+    path("orders/<int:order_pk>/cancel/", CancelOrderView.as_view(), name='cancel-order'),
+    path("orders/<int:order_pk>/update-status/", UpdateOrderStatusView.as_view(), name='update-order-status'),
+    path("webhooks/payment/", MidtransWehboohView.as_view(), name='payment-webhooks'),
+    path("tables/<str:table_code>/qr/", TableQRCodeView.as_view(), name='table-qr-code'),
+    path('token-auth/', obtain_auth_token, name='api_token_auth'),
     path("tenants/<int:tenant_id>/takeaway-qr/", TakeawayQRCodeView.as_view(), name='takeaway-qr-code'),
+    path("orders/create/", CreateOrderView.as_view(), name='create-order'),
+
+    # Daftarkan URL yang dibuat otomatis oleh router
+    path('', include(router.urls)),
+    path('', include(stands_router.urls)),
 ]
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

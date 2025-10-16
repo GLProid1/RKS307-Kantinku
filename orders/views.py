@@ -1,16 +1,28 @@
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework import status, permissions
-from rest_framework import generics, serializers
 from django.shortcuts import get_object_or_404
-from .models import Order, OrderItem, Customer, MenuItem, Tenant, Table,VariantOption
-from .serializers import OrderSerializer, OrderCreateSerializer,MenuItemSerializer
-from django.utils import timezone
-from .permissions import IsKasir, IsTenantOwner
-from django.db import transaction
-from .tasks import send_order_paid_notification
 from django.http import HttpResponse
 from django.urls import reverse
+from django.utils import timezone
+from datetime import timedelta
+from django.db import transaction
+from django.db import models # <-- IMPOR YANG HILANG DITAMBAHKAN
+from django.db.models import Sum, Count, Avg
+from django.db.models.functions import TruncHour
+from django.contrib.auth.models import User, Group
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
+
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status, permissions, generics, viewsets, serializers
+from rest_framework.decorators import action
+
+from .models import Order, OrderItem, Customer, MenuItem, Tenant, Table, VariantOption
+from .serializers import (
+    OrderSerializer, OrderCreateSerializer, MenuItemSerializer, UserSerializer, 
+    UserCreateSerializer, StandSerializer
+)
+from .permissions import IsKasir, IsTenantOwner
+from .tasks import send_order_paid_notification
+
 import qrcode
 import io
 
@@ -468,3 +480,93 @@ class ManageMenuItemView(generics.UpdateAPIView):
   queryset = MenuItem.objects.all()
   serializer_class = MenuItemSerializer
   permission_classes = [IsTenantOwner]
+
+class UserViewSet(viewsets.ModelViewSet):
+    queryset = User.objects.all().order_by('username')
+    permission_classes = [permissions.AllowAny]
+
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return UserCreateSerializer
+        return UserSerializer
+
+    @action(detail=False, methods=['get'])
+    def summary(self, request):
+        admin_count = User.objects.filter(groups__name='Admin').count()
+        seller_count = User.objects.filter(groups__name='Seller').count()
+        cashier_count = User.objects.filter(groups__name='Cashier').count()
+        
+        summary_data = {
+            'admins': {'count': admin_count, 'description': 'Full system access'},
+            'sellers': {'count': seller_count, 'description': 'Manage stands & menus'},
+            'cashiers': {'count': cashier_count, 'description': 'Process payments'},
+        }
+        return Response(summary_data)
+    
+class StandViewSet(viewsets.ModelViewSet):
+    queryset = Tenant.objects.all()
+    serializer_class = StandSerializer
+    permission_classes = [permissions.AllowAny]
+    parser_classes = (MultiPartParser, FormParser)
+
+class MenuItemViewSet(viewsets.ModelViewSet):
+    serializer_class = MenuItemSerializer
+    permission_classes = [permissions.AllowAny]
+    parser_classes = (MultiPartParser, FormParser,JSONParser)
+
+    def get_queryset(self):
+        stand_pk = self.kwargs.get('stand_pk')
+        return MenuItem.objects.filter(tenant_id=stand_pk)
+
+    def perform_create(self, serializer):
+        stand_pk = self.kwargs.get('stand_pk')
+        stand = Tenant.objects.get(pk=stand_pk)
+        serializer.save(tenant=stand)
+
+class ReportDashboardAPIView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request, *args, **kwargs):
+        one_week_ago = timezone.now() - timedelta(days=7)
+        
+        total_revenue = Order.objects.filter(status='PAID').aggregate(total=Sum('total'))['total'] or 0
+        total_orders = Order.objects.count()
+        avg_order_value = Order.objects.filter(status='PAID').aggregate(avg=Avg('total'))['avg'] or 0
+        active_customers = Order.objects.filter(created_at__gte=one_week_ago).values('customer').distinct().count()
+
+        sales_by_hour = Order.objects.filter(created_at__gte=timezone.now() - timedelta(days=1)) \
+            .annotate(hour=TruncHour('created_at')) \
+            .values('hour') \
+            .annotate(orders=Count('id')) \
+            .order_by('hour')
+        
+        formatted_sales_by_hour = [
+            {'hour': item['hour'].strftime('%H'), 'orders': item['orders']}
+            for item in sales_by_hour
+        ]
+
+        top_selling_products = OrderItem.objects.values('menu_item__name') \
+            .annotate(total_sold=Sum('qty'), total_revenue=Sum('price')) \
+            .order_by('-total_sold')[:5]
+
+        # Penggunaan 'models.Q' sekarang valid karena sudah diimpor
+        stand_performance = Tenant.objects.annotate(
+            total_orders_today=Count('orders', filter=models.Q(orders__created_at__date=timezone.now().date())),
+            total_revenue_today=Sum('orders__total', filter=models.Q(orders__status='PAID', orders__created_at__date=timezone.now().date()))
+        ).order_by('-total_revenue_today')
+
+        formatted_stand_performance = [
+            {'name': stand.name, 'orders': stand.total_orders_today, 'revenue': stand.total_revenue_today or 0}
+            for stand in stand_performance
+        ]
+
+        data = {
+            'main_stats': {
+                'total_revenue': total_revenue, 'total_orders': total_orders,
+                'avg_order_value': avg_order_value, 'active_customers': active_customers
+            },
+            'sales_by_hour': formatted_sales_by_hour,
+            'top_selling_products': list(top_selling_products),
+            'stand_performance': formatted_stand_performance,
+        }
+        return Response(data, status=status.HTTP_200_OK)

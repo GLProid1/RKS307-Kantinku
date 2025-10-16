@@ -26,6 +26,7 @@ urlpatterns = [
     
     # Baris ini akan menangani awalan 'orders/' dan mendelegasikannya
     path('orders/', include('orders.urls')), 
+    path('api/', include('orders.urls'))
 ]
 
 if settings.DEBUG:

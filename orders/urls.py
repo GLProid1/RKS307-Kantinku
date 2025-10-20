@@ -33,15 +33,20 @@ urlpatterns = [
     
     path("orders/create/", CreateOrderView.as_view(), name='create-order'),
     path("orders/all/", OrderListView.as_view(), name='order-list'),
-    path("orders/<int:order_pk>/", OrderDetailView.as_view(), name='order-detail'),
-    path("orders/<int:order_pk>/confirm-cash/", CashConfirmView.as_view(), name='confirm-cash'),
-    path("orders/<int:order_pk>/cancel/", CancelOrderView.as_view(), name='cancel-order'),
-    path("orders/<int:order_pk>/update-status/", UpdateOrderStatusView.as_view(), name='update-order-status'),
+    
+    # --- PERUBAHAN ---
+    # Mengganti <int:order_pk> menjadi <uuid:order_uuid> untuk keamanan
+    path("orders/<uuid:order_uuid>/", OrderDetailView.as_view(), name='order-detail'),
+    path("orders/<uuid:order_uuid>/confirm-cash/", CashConfirmView.as_view(), name='confirm-cash'),
+    path("orders/<uuid:order_uuid>/cancel/", CancelOrderView.as_view(), name='cancel-order'),
+    path("orders/<uuid:order_uuid>/update-status/", UpdateOrderStatusView.as_view(), name='update-order-status'),
+    # --- AKHIR PERUBAHAN ---
+    
     path("webhooks/payment/", MidtransWehboohView.as_view(), name='payment-webhooks'),
     path("tables/<str:table_code>/qr/", TableQRCodeView.as_view(), name='table-qr-code'),
     path('token-auth/', obtain_auth_token, name='api_token_auth'),
     path("tenants/<int:tenant_id>/takeaway-qr/", TakeawayQRCodeView.as_view(), name='takeaway-qr-code'),
-    path("orders/create/", CreateOrderView.as_view(), name='create-order'),
+    path("orders/create/", CreateOrderView.as_view(), name='create-order'), # Duplikat, tapi kita biarkan saja
 
     # Daftarkan URL yang dibuat otomatis oleh router
     path('', include(router.urls)),

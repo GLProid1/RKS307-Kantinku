@@ -1,7 +1,6 @@
 # orders/urls.py
 from rest_framework.authtoken.views import obtain_auth_token 
 from django.urls import path, include
-# 1. Impor 'routers' dari rest_framework_nested
 from rest_framework_nested import routers
 from django.conf import settings
 from django.conf.urls.static import static
@@ -11,23 +10,34 @@ from .views import (
     OrderDetailView, UpdateOrderStatusView, CancelOrderView, OrderListView,
     TableQRCodeView, TakeawayQRCodeView,
     
-    # View baru yang kita buat
+    # ViewSet Anda
     UserViewSet, 
     StandViewSet, 
     MenuItemViewSet,
-    ReportDashboardAPIView
+    ReportDashboardAPIView,
+    VariantGroupViewSet,
+    VariantOptionViewSet  # <-- Impor ViewSet baru
 )
 
-# 2. Sekarang 'routers' sudah dikenali dan bisa digunakan di sini
+# --- BAGIAN ROUTER (TIMPA DENGAN INI) ---
+
+# Level 1: /api/
 router = routers.DefaultRouter()
 router.register(r'users', UserViewSet, basename='user')
 router.register(r'stands', StandViewSet, basename='stand')
 
-# 3. Router bersarang juga menggunakan 'routers'
+# Level 2: /api/stands/<stand_pk>/...
 stands_router = routers.NestedDefaultRouter(router, r'stands', lookup='stand')
 stands_router.register(r'menus', MenuItemViewSet, basename='stand-menus')
+stands_router.register(r'variant-groups', VariantGroupViewSet, basename='stand-variant-groups')
 
-# Daftar semua URL pattern
+# Level 3: /api/stands/<stand_pk>/variant-groups/<group_pk>/...
+groups_router = routers.NestedDefaultRouter(stands_router, r'variant-groups', lookup='group')
+groups_router.register(r'options', VariantOptionViewSet, basename='group-options')
+
+
+# --- DAFTAR URL PATTERN (TIMPA DENGAN INI) ---
+
 urlpatterns = [
     path('reports/summary/', ReportDashboardAPIView.as_view(), name='reports-summary'),
     
@@ -41,11 +51,12 @@ urlpatterns = [
     path("tables/<str:table_code>/qr/", TableQRCodeView.as_view(), name='table-qr-code'),
     path('token-auth/', obtain_auth_token, name='api_token_auth'),
     path("tenants/<int:tenant_id>/takeaway-qr/", TakeawayQRCodeView.as_view(), name='takeaway-qr-code'),
-    path("orders/create/", CreateOrderView.as_view(), name='create-order'),
 
-    # Daftarkan URL yang dibuat otomatis oleh router
+    # Daftarkan semua URL router
     path('', include(router.urls)),
     path('', include(stands_router.urls)),
+    path('', include(groups_router.urls)),  # <-- Daftarkan router level 3
 ]
+
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

@@ -2,6 +2,13 @@ from rest_framework import serializers
 from .models import Customer, MenuItem, Order, OrderItem, Tenant, Table, VariantGroup, VariantOption
 from django.contrib.auth.models import User, Group
 
+
+class VariantGroupCreateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = VariantGroup
+        fields = ['id', 'name']
+        # 'tenant' akan di-set otomatis dari URL
+
 class VariantOptionSerializer(serializers.ModelSerializer):
     class Meta:
         model = VariantOption

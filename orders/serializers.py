@@ -1,7 +1,8 @@
 from rest_framework import serializers
 from .models import Customer, MenuItem, Order, OrderItem, Tenant, Table, VariantGroup, VariantOption
 from django.contrib.auth.models import User, Group
-
+import random # <-- TAMBAHKAN INI
+import string # <-- TAMBAHKAN INI
 
 class VariantGroupCreateSerializer(serializers.ModelSerializer):
     class Meta:
@@ -130,4 +131,18 @@ class UserCreateSerializer(serializers.ModelSerializer):
         if role_name == 'Admin':
             user.is_staff = True
             user.save(update_fields=['is_staff'])
+        
+        # --- TAMBAHKAN LOGIKA INI ---
+        if role_name == 'Seller':
+            # 1. Buat nama stand random
+            random_suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+            stand_name = f"Stand {user.username}-{random_suffix}"
+            
+            # 2. Buat Stand baru
+            new_stand = Tenant.objects.create(name=stand_name, active=True)
+            
+            # 3. Hubungkan user ini ke stand tersebut
+            new_stand.staff.add(user)
+        # --- AKHIR TAMBAHAN ---
+            
         return user

@@ -1,15 +1,9 @@
 # permissions.py
-<<<<<<< HEAD
-=======
 from rest_framework import permissions
-from .models import Order
->>>>>>> c558d1661182783cef3bc0dcc9c31381c0ddd666
-
-from rest_framework import permissions
-from .models import Order, Tenant, MenuItem # Tambahkan import
+from .models import Order, Tenant, MenuItem # <-- Menggabungkan import
 
 # ...
-# IsKasir (dengan perbaikan 'Cashier')
+# IsKasir (Gabungan)
 class IsKasir(permissions.BasePermission):
   """
   Izin akses hanya untuk user dengan status 
@@ -20,12 +14,11 @@ class IsKasir(permissions.BasePermission):
     if not user or not user.is_authenticated:
       return False
     
-<<<<<<< HEAD
     if getattr(user, 'is_staff', False):
       return True
     
     try:
-      return user.groups.filter(name='Cashier').exists() # <-- SUDAH DIPERBAIKI
+      return user.groups.filter(name='Cashier').exists()
     except Exception:
       return False
 # ...
@@ -39,7 +32,7 @@ class IsAdminUser(permissions.BasePermission):
 # ...
 
 
-# KELAS BARU 1: Untuk Stand (Tenant) dan Menu
+# KELAS DARI BRANCH 1: Untuk Stand (Tenant) dan Menu
 class IsTenantStaff(permissions.BasePermission):
     """
     Izin untuk Admin atau Seller (staf) yang terdaftar di Tenant.
@@ -65,7 +58,7 @@ class IsTenantStaff(permissions.BasePermission):
         
         return False
 
-# KELAS BARU 2: Untuk Order
+# KELAS DARI BRANCH 1: Untuk Order (Menggantikan IsTenantOwner)
 class IsOrderTenantStaff(permissions.BasePermission):
     """
     Izin untuk Admin atau Seller (staf) yang terdaftar 
@@ -83,48 +76,8 @@ class IsOrderTenantStaff(permissions.BasePermission):
             return obj.tenant.staff.filter(pk=request.user.pk).exists()
         
         return False
-=======
-    # Opsi 1: Cek apakah user adalah staff (superadmin)
-    if getattr(user, 'is_staff', False):
-      return True
-    
-    # Opsi 2 : Cek apakah user tergabung di group 'Kasir'
-    try:
-      # --- PERUBAHAN ---
-      # Menggunakan 'Kasir' (Kapital) sesuai dengan UserCreateSerializer
-      return user.groups.filter(name='Cashier').exists()
-      # --- AKHIR PERUBAHAN ---
-    except Exception:
-      return False
 
-# --- PERUBAHAN ---
-# IsTenantOwner diubah untuk memeriksa object permission
-class IsTenantOwner(permissions.BasePermission):
-  """
-    Izin yang hanya dimiliki pemilik tenant untuk mengakses atau mengubah order
-    milik tenantnya. Ini adalah object-level permission.
-  """
-  message = "Anda tidak memiliki izin untuk mengakses order dari tenant ini."
-  
-  def has_permission(self, request, view):
-    # Memastikan user harus login untuk menggunakan permission ini
-    return request.user and request.user.is_authenticated
-  
-  def has_object_permission(self, request, view, obj):
-    # obj adalah instance Order
-    user = request.user
-
-    # Jika user adalah staff global (superadmin), izinkan
-    if user.is_staff:
-      return True
-    
-    # Cek apakah user (yang sudah login) ada di dalam staff tenant dari order tsb
-    return obj.tenant.staff.filter(pk=user.pk).exists()
-# --- AKHIR PERUBAHAN ---
-
-
-# --- PERUBAHAN BARU ---
-# Menambahkan Izin untuk Guest (Pelanggan Non-Login)
+# KELAS DARI BRANCH 2: Untuk Guest (Pelanggan Non-Login)
 class IsGuestOrderOwner(permissions.BasePermission):
   """
   Izin untuk guest (non-login) yang memiliki UUID order di session.
@@ -140,13 +93,10 @@ class IsGuestOrderOwner(permissions.BasePermission):
     user = request.user
     
     # Permission ini HANYA untuk guest. 
-    # Jika user sudah login, biarkan permission lain (IsTenantOwner) yg menangani
+    # Jika user sudah login, biarkan permission lain (IsOrderTenantStaff) yg menangani
     if user.is_authenticated:
       return False 
     
     # Jika user adalah guest, cek session
-    # Kita akan menyimpan 'guest_order_uuids' di session saat membuat order
     guest_uuids = request.session.get('guest_order_uuids', [])
     return str(obj.uuid) in guest_uuids
-# --- AKHIR PERUBAHAN BARU ---
->>>>>>> c558d1661182783cef3bc0dcc9c31381c0ddd666

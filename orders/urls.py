@@ -19,7 +19,7 @@ from .views import (
     VariantOptionViewSet  # <-- Impor ViewSet baru
 )
 
-# --- BAGIAN ROUTER (TIMPA DENGAN INI) ---
+# --- BAGIAN ROUTER (Gabungan) ---
 
 # Level 1: /api/
 router = routers.DefaultRouter()
@@ -36,7 +36,7 @@ groups_router = routers.NestedDefaultRouter(stands_router, r'variant-groups', lo
 groups_router.register(r'options', VariantOptionViewSet, basename='group-options')
 
 
-# --- DAFTAR URL PATTERN (TIMPA DENGAN INI) ---
+# --- DAFTAR URL PATTERN (Gabungan) ---
 
 urlpatterns = [
     path('reports/summary/', ReportDashboardAPIView.as_view(), name='reports-summary'),
@@ -44,8 +44,7 @@ urlpatterns = [
     path("orders/create/", CreateOrderView.as_view(), name='create-order'),
     path("orders/all/", OrderListView.as_view(), name='order-list'),
     
-    # --- PERUBAHAN ---
-    # Mengganti <int:order_pk> menjadi <uuid:order_uuid> untuk keamanan
+    # --- PERUBAHAN (Menggunakan <uuid:order_uuid> dari Branch 2) ---
     path("orders/<uuid:order_uuid>/", OrderDetailView.as_view(), name='order-detail'),
     path("orders/<uuid:order_uuid>/confirm-cash/", CashConfirmView.as_view(), name='confirm-cash'),
     path("orders/<uuid:order_uuid>/cancel/", CancelOrderView.as_view(), name='cancel-order'),
@@ -56,10 +55,7 @@ urlpatterns = [
     path("tables/<str:table_code>/qr/", TableQRCodeView.as_view(), name='table-qr-code'),
     path('token-auth/', obtain_auth_token, name='api_token_auth'),
     path("tenants/<int:tenant_id>/takeaway-qr/", TakeawayQRCodeView.as_view(), name='takeaway-qr-code'),
-<<<<<<< HEAD
-=======
-    path("orders/create/", CreateOrderView.as_view(), name='create-order'), # Duplikat, tapi kita biarkan saja
->>>>>>> c558d1661182783cef3bc0dcc9c31381c0ddd666
+    # Konflik (baris duplikat) di bawah ini telah dihapus
 
     # Daftarkan semua URL router
     path('', include(router.urls)),

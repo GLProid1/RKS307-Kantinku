@@ -1,3 +1,4 @@
+# views.py
 from django.shortcuts import get_object_or_404
 from django.http import HttpResponse
 from django.urls import reverse
@@ -15,25 +16,20 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status, permissions, generics, viewsets, serializers
 from rest_framework.decorators import action
-from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated, OR
 
 from .models import Order, OrderItem, Customer, MenuItem, Tenant, Table, VariantOption, VariantGroup
 from .serializers import (
-<<<<<<< HEAD
     OrderSerializer, OrderCreateSerializer, MenuItemSerializer, UserSerializer, 
-    UserCreateSerializer, StandSerializer,VariantGroupSerializer, VariantGroupCreateSerializer, VariantOptionSerializer
+    UserCreateSerializer, StandSerializer, VariantGroupSerializer, 
+    VariantGroupCreateSerializer, VariantOptionSerializer
 )
-from .permissions import IsKasir, IsTenantOwner, IsAdminUser, IsTenantStaff, IsOrderTenantStaff # <-- Ganti IsTenantOwner dengan 2 kelas baru
-=======
-    OrderSerializer, OrderCreateSerializer, MenuItemSerializer, UserSerializer,
-    UserCreateSerializer, StandSerializer
+# --- GABUNGAN IMPORT PERMISSION ---
+from .permissions import (
+    IsKasir, IsAdminUser, IsTenantStaff, 
+    IsOrderTenantStaff, IsGuestOrderOwner
 )
-# --- PERUBAHAN ---
-# Impor izin baru kita dan OR operator
-from .permissions import IsKasir, IsTenantOwner, IsGuestOrderOwner
-from rest_framework.permissions import OR
-# --- AKHIR PERUBAHAN ---
->>>>>>> c558d1661182783cef3bc0dcc9c31381c0ddd666
+# --- AKHIR GABUNGAN ---
 from .tasks import send_order_paid_notification
 
 import qrcode
@@ -168,14 +164,12 @@ class CreateOrderView(APIView):
       # CASH: client gets references_code and must pay to kasih
       pass
 
-    # --- PERUBAHAN ---
-    # Simpan UUID order di session jika user adalah guest
+    # --- PERUBAHAN (Logika Session dari Branch 2) ---
     if not request.user.is_authenticated:
         guest_uuids = request.session.get('guest_order_uuids', [])
         if str(order.uuid) not in guest_uuids:
             guest_uuids.append(str(order.uuid))
             request.session['guest_order_uuids'] = guest_uuids
-            # Optional: Anda bisa menambahkan logic untuk membatasi jumlah UUID di session
     # --- AKHIR PERUBAHAN ---
     
     resp = {
@@ -185,14 +179,10 @@ class CreateOrderView(APIView):
     return Response(resp, status=status.HTTP_201_CREATED)
   
 class MidtransWehboohView(APIView):
-    """
-    Skeleton webhook for payment gateway notifications.
-    """
     permission_classes = [permissions.AllowAny]
     
     def post(self, request):
       payload = request.data
-      # Validate signature here (gateway specific)
       external_id = payload.get("external_id") or payload.get("order_id") or None
       status_code = payload.get("transaction_status") or payload.get('status')
       
@@ -210,7 +200,6 @@ class MidtransWehboohView(APIView):
         return Response({"detail": "Order kadaluarsa, tidak bisa dibayar"}, status=400)
 
       
-      # Gateway specific mapping: check settled/paid
       if status_code in ['settlement', 'paid', 'success']:
         order.status = "PAID"
         order.paid_at = timezone.now()
@@ -219,14 +208,12 @@ class MidtransWehboohView(APIView):
         transaction.on_commit(lambda: send_order_paid_notification.delay(order.id))
         return Response({'detail': 'Order marked paid'}, status=200)
       
-      # Handle expired / canceled
       if status_code in ['expire', 'expired', 'cancel']:
         order.status = "CANCELLED"
         order.meta.setdefault('gateway_notification', []).append(payload)
         order.save(update_fields=['status', 'meta'])
         return Response({"detail": "Order Cancelled"}, status=200)
       
-      # Else: keep pending and store payload
       order.meta.setdefault("gateway_notification", []).append(payload)
       order.save(update_fields=['meta'])
       return Response({"detail": "Ok"}, status=200)
@@ -235,14 +222,14 @@ class CashConfirmView(APIView):
   """ 
   Endpoint untuk Kasir mengkonfirmasi bahwa order CASH sudah dibayar.
   """
-  # --- PERUBAHAN ---
-  # Menggunakan IsTenantOwner agar hanya staff tenant yg relevan yg bisa konfirmasi
-  permission_classes = [IsTenantOwner]
+  # --- GABUNGAN ---
+  # Menggunakan IsOrderTenantStaff (dari Branch 1)
+  permission_classes = [IsOrderTenantStaff]
   
-  def post(self, request, order_uuid): # -> Menggunakan order_uuid
+  def post(self, request, order_uuid): # -> Menggunakan order_uuid (dari Branch 2)
     order = get_object_or_404(Order, uuid=order_uuid) # -> Mencari berdasarkan uuid
     self.check_object_permission(request, order) # -> Menjalankan cek object permission
-    # --- AKHIR PERUBAHAN ---
+    # --- AKHIR GABUNGAN ---
     
     if order.status.upper() == 'EXPIRED':
       return Response({"detail": "Order sudah kadaluarsa, tidak bisa dikonfirmasi"}, status=status.HTTP_400_BAD_REQUEST)
@@ -293,16 +280,15 @@ class CashConfirmView(APIView):
     }, status=status.HTTP_200_OK)
     
 class OrderDetailView(APIView):
-  # --- PERUBAHAN ---
-  # Mengizinkan staff tenant ATAU guest pemilik order
-  permission_classes = [IsTenantOwner | IsGuestOrderOwner]
+  # --- GABUNGAN ---
+  # Mengizinkan staff tenant (Branch 1) ATAU guest pemilik order (Branch 2)
+  permission_classes = [IsOrderTenantStaff | IsGuestOrderOwner]
   
   def get(self, request, order_uuid): # -> Menggunakan order_uuid
     order = get_object_or_404(Order, uuid=order_uuid) # -> Mencari berdasarkan uuid
     self.check_object_permission(request, order) # -> Menjalankan cek object permission
-    # --- AKHIR PERUBAHAN ---
+    # --- AKHIR GABUNGAN ---
       
-    # cek expired
     if order.expired_at and timezone.now() > order.expired_at and order.status != 'EXPIRED':
       order.status = 'EXPIRED'
       order.save(update_fields=['status'])
@@ -314,14 +300,14 @@ class CancelOrderView(APIView):
   """
     Endpoint untuk costomer atau kasir yang membatalakn order.
   """
-  # --- PERUBAHAN ---
-  # Mengizinkan staff tenant ATAU guest pemilik order
-  permission_classes = [IsTenantOwner | IsGuestOrderOwner]
+  # --- GABUNGAN ---
+  # Mengizinkan staff tenant (Branch 1) ATAU guest pemilik order (Branch 2)
+  permission_classes = [IsOrderTenantStaff | IsGuestOrderOwner]
   
   def post(self, request, order_uuid): # -> Menggunakan order_uuid
     order = get_object_or_404(Order, uuid=order_uuid) # -> Mencari berdasarkan uuid
     self.check_object_permission(request, order) # -> Menjalankan cek object permission
-    # --- AKHIR PERUBAHAN ---
+    # --- AKHIR GABUNGAN ---
     
     if order.status.upper() == 'PAID':
       return Response({"detail": "Order sudah dibayar, tidak bisa dibatalkan"}, status=status.HTTP_400_BAD_REQUEST)
@@ -340,81 +326,43 @@ class CancelOrderView(APIView):
 
     return Response({"detail": f"Order dengan status {order.status} tidak dapat dibatalkan."}, status=status.HTTP_400_BAD_REQUEST)
   
-# orders/views.py
-
 class UpdateOrderStatusView(APIView):
-<<<<<<< HEAD
     """
-    Endpoint untuk Tenant mengubah status order. Hanya user yang memiliki hak
-    yang bisa mengubah status tersebut
+    Endpoint untuk Tenant mengubah status order.
     """
-    # TAMBAHKAN PERMISSION INI:
-    permission_classes = [IsOrderTenantStaff] # Memastikan hanya Admin/Staf Tenant yg bisa akses
+    # --- GABUNGAN ---
+    # Menggunakan IsOrderTenantStaff (dari Branch 1)
+    permission_classes = [IsOrderTenantStaff]
 
-    # Aturan transisi status yang dimiliki tenant
     VALID_TRANSITIONS = {
         'PAID': ['PROCESSING'],
         'PROCESSING': ['READY'],
         'READY': ['COMPLETED']
     }
     
-    def patch(self, request, order_pk):
-        order = get_object_or_404(Order, pk=order_pk)
+    def patch(self, request, order_uuid): # -> Menggunakan order_uuid (dari Branch 2)
+        order = get_object_or_404(Order, uuid=order_uuid) # -> Mencari berdasarkan uuid
         
-        # Cek izin objek secara manual
         self.check_object_permissions(request, order) # <-- PANGGIL CEK PERMISSION
         
         new_status = request.data.get('status')
-        # ... (sisa logika Anda sudah benar)
         if not new_status:
             return Response({"detail": "Field 'status' diperlukan"}, status=status.HTTP_400_BAD_REQUEST)
+        
         current_status = order.status
         allowed_next_statues = self.VALID_TRANSITIONS.get(current_status)
+        
         if not allowed_next_statues or new_status not in allowed_next_statues:
             return Response({"detail": f"Perubahan dari status '{current_status}' ke '{new_status}' tidak diperbolehkan"})
+        
         order.status = new_status
         order.save(update_fields=['status'])
         
         return Response(OrderSerializer(order).data, status=status.HTTP_200_OK)
-=======
-  # --- PERUBAHAN ---
-  # Menggunakan IsTenantOwner agar hanya staff tenant yg relevan yg bisa update
-  permission_classes = [IsTenantOwner]
-  # --- AKHIR PERUBAHAN ---
-  
-  """
-    Endpoint untuk Tenant mengubah status order. ...
-  """
-  VALID_TRANSITIONS = {
-    'PAID': ['PROCESSING'],
-    'PROCESSING': ['READY'],
-    'READY': ['COMPLETED']
-  }
-  
-  # --- PERUBAHAN ---
-  def patch(self, request, order_uuid): # -> Menggunakan order_uuid
-    order = get_object_or_404(Order, uuid=order_uuid) # -> Mencari berdasarkan uuid
-    self.check_object_permission(request, order) # -> Menjalankan cek object permission
-  # --- AKHIR PERUBAHAN ---
-    
-    new_status = request.data.get('status')
-    
-    if not new_status:
-      return Response({"detail": "Field 'status' diperlukan"}, status=status.HTTP_400_BAD_REQUEST)
-    current_status = order.status
-    allowed_next_statues = self.VALID_TRANSITIONS.get(current_status)
-    if not allowed_next_statues or new_status not in allowed_next_statues:
-      return Response({"detail": f"Perubahan dari status '{current_status}' ke '{new_status}' tidak diperbolehkan"})
-    order.status = new_status
-    order.save(update_fields=['status'])
-    
-    return Response(OrderSerializer(order).data, status=status.HTTP_200_OK)
->>>>>>> c558d1661182783cef3bc0dcc9c31381c0ddd666
+    # --- AKHIR GABUNGAN ---
   
 class OrderCreateView(generics.CreateAPIView):
     # Catatan: View ini sepertinya tidak digunakan oleh urls.py Anda, 
-    # CreateOrderView (APIView) yang digunakan.
-    # Namun, logikanya tetap disertakan di sini.
     serializer_class = OrderCreateSerializer
 
     @transaction.atomic
@@ -448,7 +396,7 @@ class OrderCreateView(generics.CreateAPIView):
 
             if menu_item_obj.stock < item_data['qty']:
                 raise serializers.ValidationError(
-                    f"Stok untuk '{menu_item_obj.name}' tidak mencukupi. Sisa: {menu_item_obj.stock}."
+                    f"Stok untuk '{menu_item_obj.name}' tidak mencukupi. Sisa: {menu_items_map[menu_item_id].stock}."
                 )
             
             menu_item_obj.stock -= item_data['qty']
@@ -465,8 +413,7 @@ class OrderListView(generics.ListAPIView):
     serializer_class = OrderSerializer
     permission_classes = [IsKasir] # -> Memastikan user adalah Kasir/Staff global
 
-    # --- PERUBAHAN ---
-    # Memfilter queryset berdasarkan tenant staff
+    # --- PERUBAHAN (Logika filter dari Branch 2) ---
     def get_queryset(self):
         user = self.request.user
         base_qs = Order.objects.prefetch_related(
@@ -482,23 +429,13 @@ class OrderListView(generics.ListAPIView):
     # --- AKHIR PERUBAHAN ---
 
 class TableQRCodeView(APIView):
-    """
-    Menghasilkan gambar QR Code untuk sebuah meja spesifik.
-    """
     permission_classes = [permissions.AllowAny] 
 
     def get(self, request, table_code):
         table = get_object_or_404(Table, code=table_code)
-        
-        # Ganti 'https://yourfrontend.com/order' dengan URL aplikasi frontend Anda.
         frontend_url = request.build_absolute_uri(reverse('create-order')) + f"?table={table.code}"
         
-        qr = qrcode.QRCode(
-            version=1,
-            error_correction=qrcode.constants.ERROR_CORRECT_L,
-            box_size=10,
-            border=4,
-        )
+        qr = qrcode.QRCode(version=1, error_correction=qrcode.constants.ERROR_CORRECT_L, box_size=10, border=4)
         qr.add_data(frontend_url)
         qr.make(fit=True)
 
@@ -511,15 +448,10 @@ class TableQRCodeView(APIView):
         return HttpResponse(buffer, content_type="image/png")
 
 class TakeawayQRCodeView(APIView):
-    """
-    Menghasilkan gambar QR Code untuk pesanan Takeaway per Tenant.
-    """
     permission_classes = [permissions.AllowAny]
 
     def get(self, request, tenant_id):
         tenant = get_object_or_404(Tenant, pk=tenant_id)
-        
-        # Ganti 'https://yourfrontend.com/order' dengan URL aplikasi frontend Anda.
         frontend_url = request.build_absolute_uri(reverse('create-order')) + f"?tenant={tenant.id}&order_type=TAKEAWAY"
         
         qr = qrcode.QRCode(version=1, box_size=10, border=4)
@@ -533,43 +465,36 @@ class TakeawayQRCodeView(APIView):
         
         return HttpResponse(buffer, content_type="image/png")
     
-# orders/views.py
-
 class ManageMenuItemView(generics.UpdateAPIView):
   # Catatan: View ini sepertinya tidak digunakan oleh urls.py Anda,
-  # MenuItemViewSet yang digunakan.
   queryset = MenuItem.objects.all()
   serializer_class = MenuItemSerializer
-<<<<<<< HEAD
-  # GUNAKAN IsTenantStaff, BUKAN IsTenantOwner
+  # --- GABUNGAN ---
+  # Menggunakan IsTenantStaff (dari Branch 1)
   permission_classes = [IsTenantStaff]
+  # --- AKHIR GABUNGAN ---
 
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all().order_by('username')
-    # permission_classes = [permissions.AllowAny] # <-- HAPUS INI
-=======
-  permission_classes = [IsTenantOwner] # Ini adalah permission yg lama, perlu disesuaikan
-
-class UserViewSet(viewsets.ModelViewSet):
-    queryset = User.objects.all().order_by('username')
-    permission_classes = [permissions.AllowAny] # Harap pertimbangkan untuk mengubah ini ke IsAdminUser
->>>>>>> c558d1661182783cef3bc0dcc9c31381c0ddd666
+    # permission_classes [AllowAny] Dihapus (dari Branch 1)
 
     def get_serializer_class(self):
         if self.action == 'create':
             return UserCreateSerializer
         return UserSerializer
 
+    # --- GABUNGAN ---
+    # Menggunakan get_permissions (dari Branch 1) untuk keamanan
     def get_permissions(self):
         """
         Hanya Admin yang boleh melakukan apa pun pada user.
         """
         permission_classes = [IsAdminUser]
         return [permission() for permission in permission_classes]
+    # --- AKHIR GABUNGAN ---
 
     @action(detail=False, methods=['get'])
     def summary(self, request):
-        # ... (fungsi summary Anda sudah bagus)
         admin_count = User.objects.filter(groups__name='Admin').count()
         seller_count = User.objects.filter(groups__name='Seller').count()
         cashier_count = User.objects.filter(groups__name='Cashier').count()
@@ -584,13 +509,11 @@ class UserViewSet(viewsets.ModelViewSet):
 class StandViewSet(viewsets.ModelViewSet):
     queryset = Tenant.objects.all()
     serializer_class = StandSerializer
-<<<<<<< HEAD
-=======
-    permission_classes = [permissions.AllowAny] # Harap pertimbangkan keamanannya
->>>>>>> c558d1661182783cef3bc0dcc9c31381c0ddd666
     parser_classes = (MultiPartParser, FormParser)
+    # permission_classes [AllowAny] Dihapus (dari Branch 1)
 
-    # TAMBAHKAN DECORATOR INI
+    # --- GABUNGAN ---
+    # Menambahkan action manage_staff (dari Branch 1)
     @action(detail=True, methods=['post'], permission_classes=[IsAdminUser], url_path='manage-staff')
     def manage_staff(self, request, pk=None):
         """
@@ -605,7 +528,6 @@ class StandViewSet(viewsets.ModelViewSet):
             return Response({"error": "user_id dan action diperlukan"}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            # Pastikan user adalah Seller
             user = User.objects.get(pk=user_id, groups__name='Seller')
         except User.DoesNotExist:
             return Response({"error": "User Seller tidak ditemukan"}, status=status.HTTP_404_NOT_FOUND)
@@ -619,41 +541,36 @@ class StandViewSet(viewsets.ModelViewSet):
         else:
             return Response({"error": "Action tidak valid (gunakan 'add' atau 'remove')"}, status=status.HTTP_400_BAD_REQUEST)
 
+    # Menggunakan get_permissions (dari Branch 1)
     def get_permissions(self):
-        # ... (Logika get_permissions Anda di sini sudah benar)
         if self.action in ['list', 'retrieve']:
             permission_classes = [AllowAny]
         elif self.action in ['create', 'destroy']:
             permission_classes = [IsAdminUser]
         elif self.action in ['update', 'partial_update']:
             permission_classes = [IsTenantStaff]
-        # Tambahkan permission untuk action baru Anda
         elif self.action == 'manage_staff':
             permission_classes = [IsAdminUser]
         else:
             permission_classes = [IsAuthenticated]
         
         return [permission() for permission in permission_classes]
-
-# orders/views.py
+    # --- AKHIR GABUNGAN ---
 
 class MenuItemViewSet(viewsets.ModelViewSet):
     serializer_class = MenuItemSerializer
-<<<<<<< HEAD
-    # permission_classes = [permissions.AllowAny] # <-- HAPUS INI
-=======
-    permission_classes = [permissions.AllowAny] # Harap pertimbangkan keamanannya
->>>>>>> c558d1661182783cef3bc0dcc9c31381c0ddd666
     parser_classes = (MultiPartParser, FormParser,JSONParser)
+    # permission_classes [AllowAny] Dihapus (dari Branch 1)
 
     def get_queryset(self):
         stand_pk = self.kwargs.get('stand_pk')
         return MenuItem.objects.filter(tenant_id=stand_pk)
 
+    # --- GABUNGAN ---
+    # Menggunakan logika lengkap dari Branch 1 untuk keamanan
     def get_tenant(self):
         """Helper untuk mendapatkan instance tenant."""
         stand_pk = self.kwargs.get('stand_pk')
-<<<<<<< HEAD
         return get_object_or_404(Tenant, pk=stand_pk)
 
     def get_permissions(self):
@@ -665,7 +582,6 @@ class MenuItemViewSet(viewsets.ModelViewSet):
         if self.action in ['list', 'retrieve']:
             permission_classes = [permissions.AllowAny]
         else:
-            # Gunakan IsTenantStaff, bukan IsTenantOwner
             permission_classes = [IsTenantStaff] 
             
         return [permission() for permission in permission_classes]
@@ -678,50 +594,50 @@ class MenuItemViewSet(viewsets.ModelViewSet):
         if self.action not in ['list', 'retrieve']:
             tenant = self.get_tenant()
             # Cek izin terhadap tenant-nya
-            super(MenuItemViewSet, self).check_object_permissions(request, tenant)
-        # Untuk list/retrieve, tidak perlu cek objek
+            # Kita panggil check_object_permissions dari BasePermission
+            for permission in self.get_permissions():
+                if not permission.has_object_permission(request, self, tenant):
+                    self.permission_denied(request)
         
     def perform_create(self, serializer):
-        # Otomatis set tenant berdasarkan URL
         tenant = self.get_tenant()
         # Cek izin sebelum membuat
         self.check_object_permissions(self.request, tenant)
         serializer.save(tenant=tenant)
 
     def perform_update(self, serializer):
-        self.check_object_permissions(self.request, serializer.instance)
+        self.check_object_permissions(self.request, serializer.instance.tenant)
         serializer.save()
 
     def perform_destroy(self, instance):
-        self.check_object_permissions(self.request, instance)
+        self.check_object_permissions(self.request, instance.tenant)
         instance.delete()
-=======
-        stand = Tenant.objects.get(pk=stand_pk)
-        # TODO: Tambahkan cek izin apakah user boleh menambah menu ke stand ini
-        serializer.save(tenant=stand)
->>>>>>> c558d1661182783cef3bc0dcc9c31381c0ddd666
+    # --- AKHIR GABUNGAN ---
 
 class ReportDashboardAPIView(APIView):
-    # --- PERUBAHAN ---
-    # Mengamankan endpoint laporan
-    permission_classes = [IsKasir] # -> Hanya Kasir/Staff yg bisa lihat
-    # --- AKHIR PERUBAHAN ---
+    # --- GABUNGAN ---
+    # Mengamankan endpoint (dari Branch 2)
+    permission_classes = [IsKasir] 
 
     def get(self, request, *args, **kwargs):
         one_week_ago = timezone.now() - timedelta(days=7)
-        user = request.user # -> Ambil user
+        user = request.user 
         
-        # Statistik All-Time
-        # TODO: Ini masih mengambil data global, perlu difilter jika kasir non-admin
-        total_revenue = Order.objects.filter(status='PAID').aggregate(total=Sum('total'))['total'] or 0
-        total_orders = Order.objects.count()
-        avg_order_value = Order.objects.filter(status='PAID').aggregate(avg=Avg('total'))['avg'] or 0
-        active_customers = Order.objects.filter(created_at__gte=one_week_ago).values('customer').distinct().count()
+        # Ambil semua data global HANYA jika user adalah superadmin
+        total_revenue = 0
+        total_orders = 0
+        avg_order_value = 0
+        active_customers = 0
+        
+        if user.is_staff:
+            total_revenue = Order.objects.filter(status='PAID').aggregate(total=Sum('total'))['total'] or 0
+            total_orders = Order.objects.count()
+            avg_order_value = Order.objects.filter(status='PAID').aggregate(avg=Avg('total'))['avg'] or 0
+            active_customers = Order.objects.filter(created_at__gte=one_week_ago).values('customer').distinct().count()
 
-        # Statistik Hari Ini
+        # Statistik Hari Ini (difilter berdasarkan staff tenant)
         today = timezone.now().date()
         today_orders_qs = Order.objects.filter(created_at__date=today)
-        # Filter jika bukan admin
         if not user.is_staff:
             today_orders_qs = today_orders_qs.filter(tenant__staff=user)
         
@@ -732,7 +648,7 @@ class ReportDashboardAPIView(APIView):
             'completed': today_orders_qs.filter(status='COMPLETED').count()
         }
 
-        # Sales by Hour
+        # Sales by Hour (difilter)
         sales_by_hour_qs = Order.objects.filter(created_at__gte=timezone.now() - timedelta(days=1))
         if not user.is_staff:
             sales_by_hour_qs = sales_by_hour_qs.filter(tenant__staff=user)
@@ -747,7 +663,7 @@ class ReportDashboardAPIView(APIView):
             for item in sales_by_hour
         ]
 
-        # Top Selling Products
+        # Top Selling Products (difilter)
         top_selling_qs = OrderItem.objects.all()
         if not user.is_staff:
             top_selling_qs = top_selling_qs.filter(order__tenant__staff=user)
@@ -756,8 +672,7 @@ class ReportDashboardAPIView(APIView):
             .annotate(total_sold=Sum('qty'), total_revenue=Sum('price')) \
             .order_by('-total_sold')[:5]
 
-        # --- PERUBAHAN ---
-        # Memfilter performa stand jika user bukan staff global
+        # Stand Performance (difilter)
         stand_performance_qs = Tenant.objects.all()
         if not user.is_staff:
             stand_performance_qs = stand_performance_qs.filter(staff=user)
@@ -766,7 +681,7 @@ class ReportDashboardAPIView(APIView):
             total_orders_today=Count('orders', filter=models.Q(orders__created_at__date=timezone.now().date())),
             total_revenue_today=Sum('orders__total', filter=models.Q(orders__status='PAID', orders__created_at__date=timezone.now().date()))
         ).order_by('-total_revenue_today')
-        # --- AKHIR PERUBAHAN ---
+        # --- AKHIR GABUNGAN ---
 
         formatted_stand_performance = [
             {'name': stand.name, 'orders': stand.total_orders_today, 'revenue': stand.total_revenue_today or 0}
@@ -785,7 +700,8 @@ class ReportDashboardAPIView(APIView):
         }
         return Response(data, status=status.HTTP_200_OK)
     
-
+# --- GABUNGAN ---
+# Menambahkan ViewSet Varian (dari Branch 1)
 class VariantGroupViewSet(viewsets.ModelViewSet):
     """
     ViewSet untuk mengelola VariantGroup (misal: 'Ukuran', 'Level Pedas')
@@ -808,7 +724,6 @@ class VariantGroupViewSet(viewsets.ModelViewSet):
         """
         tenant = self.get_tenant()
         
-        # GANTI IsTenantOwner MENJADI IsTenantStaff
         if not (IsAdminUser().has_permission(self.request, self) or 
                 IsTenantStaff().has_object_permission(self.request, self, tenant)):
             self.permission_denied(self.request)
@@ -835,7 +750,6 @@ class VariantOptionViewSet(viewsets.ModelViewSet):
         stand_pk = self.kwargs.get('stand_pk')
         group_pk = self.kwargs.get('group_pk')
         
-        # Filter berdasarkan tenant (stand_pk) dan grup (group_pk)
         return get_object_or_404(VariantGroup, pk=group_pk, tenant_id=stand_pk)
 
     def get_queryset(self):
@@ -847,17 +761,16 @@ class VariantOptionViewSet(viewsets.ModelViewSet):
         """
         Izin dicek terhadap tenant pemilik grup.
         """
-        # Dapatkan tenant dari grup induk
         tenant = self.get_group().tenant
         
-        # Cek izin terhadap tenant tersebut
         if not (IsAdminUser().has_permission(self.request, self) or 
                 IsTenantStaff().has_object_permission(self.request, self, tenant)):
             self.permission_denied(self.request)
             
-        return [IsAuthenticated()] # Jika lolos, cukup terautentikasi
+        return [IsAuthenticated()]
 
     def perform_create(self, serializer):
         """Otomatis set 'group' saat membuat opsi baru."""
         group = self.get_group()
         serializer.save(group=group)
+# --- AKHIR GABUNGAN ---

@@ -94,9 +94,10 @@ class OrderCreateSerializer(serializers.Serializer):
   
 class OrderItemSerializer(serializers.ModelSerializer):
     menu_item = MenuItemSerializer()
+    selected_variants = VariantOptionSerializer(many=True, read_only=True)
     class Meta:
         model = OrderItem
-        fields = ['id', 'menu_item', 'qty', 'price', 'note']
+        fields = ['id', 'menu_item', 'qty', 'price', 'note', 'selected_variants']
     
 class OrderSerializer(serializers.ModelSerializer):
     items = OrderItemSerializer(many=True, read_only=True)

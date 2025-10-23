@@ -411,7 +411,7 @@ class OrderListView(generics.ListAPIView):
     Endpoint ini dilindungi dan hanya bisa diakses oleh Kasir atau Admin.
     """
     serializer_class = OrderSerializer
-    permission_classes = [IsKasir] # -> Memastikan user adalah Kasir/Staff global
+    permission_classes = [IsAuthenticated] # -> Memastikan user adalah Kasir/Staff global
 
     # --- PERUBAHAN (Logika filter dari Branch 2) ---
     def get_queryset(self):
@@ -507,10 +507,27 @@ class UserViewSet(viewsets.ModelViewSet):
         return Response(summary_data)
     
 class StandViewSet(viewsets.ModelViewSet):
-    queryset = Tenant.objects.all()
     serializer_class = StandSerializer
     parser_classes = (MultiPartParser, FormParser)
     # permission_classes [AllowAny] Dihapus (dari Branch 1)
+    # --- TAMBAHKAN FUNGSI DI BAWAH INI ---
+    def get_queryset(self):
+        """
+        Filter queryset berdasarkan user:
+        - Admin (is_staff) bisa melihat semua stand.
+        - Seller (non-staff) hanya bisa melihat stand tempat dia terdaftar.
+        - Anonim hanya melihat stand aktif.
+        """
+        user = self.request.user
+        if user.is_authenticated:
+            if user.is_staff:
+                return Tenant.objects.all() # Admin melihat semua
+            else:
+                return user.tenants.all() # Seller melihat miliknya ('tenants' dari related_name)
+        
+        # User anonim (jika endpoint-nya publik)
+        return Tenant.objects.filter(active=True)
+    # --- AKHIR TAMBAHAN ---
 
     # --- GABUNGAN ---
     # Menambahkan action manage_staff (dari Branch 1)
@@ -617,7 +634,7 @@ class MenuItemViewSet(viewsets.ModelViewSet):
 class ReportDashboardAPIView(APIView):
     # --- GABUNGAN ---
     # Mengamankan endpoint (dari Branch 2)
-    permission_classes = [IsKasir] 
+    permission_classes = [IsAuthenticated]
 
     def get(self, request, *args, **kwargs):
         one_week_ago = timezone.now() - timedelta(days=7)

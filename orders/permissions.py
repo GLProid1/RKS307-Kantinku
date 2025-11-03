@@ -28,7 +28,9 @@ class IsKasir(permissions.BasePermission):
 class IsAdminUser(permissions.BasePermission):
     """Hanya memperbolehkan akses ke Admin."""
     def has_permission(self, request, view):
-        return request.user and request.user.is_authenticated and request.user.groups.filter(name='Admin').exists()
+        return request.user and request.user.is_authenticated and (
+            request.user.groups.filter(name='Admin').exists() or request.user.is_staff
+        )
 # ...
 
 

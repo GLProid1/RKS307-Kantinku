@@ -27,12 +27,12 @@ router.register(r'users', UserViewSet, basename='user')
 router.register(r'stands', StandViewSet, basename='stand')
 
 # Level 2: /api/stands/<stand_pk>/...
-stands_router = routers.NestedDefaultRouter(router, r'stands', lookup='stand')
+stands_router = routers.NestedSimpleRouter(router, r'stands', lookup='stand')
 stands_router.register(r'menus', MenuItemViewSet, basename='stand-menus')
 stands_router.register(r'variant-groups', VariantGroupViewSet, basename='stand-variant-groups')
 
 # Level 3: /api/stands/<stand_pk>/variant-groups/<group_pk>/...
-groups_router = routers.NestedDefaultRouter(stands_router, r'variant-groups', lookup='group')
+groups_router = routers.NestedSimpleRouter(stands_router, r'variant-groups', lookup='group')
 groups_router.register(r'options', VariantOptionViewSet, basename='group-options')
 
 

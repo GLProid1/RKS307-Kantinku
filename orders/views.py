@@ -228,7 +228,7 @@ class CashConfirmView(APIView):
   
   def post(self, request, order_uuid): # -> Menggunakan order_uuid (dari Branch 2)
     order = get_object_or_404(Order, uuid=order_uuid) # -> Mencari berdasarkan uuid
-    self.check_object_permission(request, order) # -> Menjalankan cek object permission
+    self.check_object_permissions(request, order) # -> Menjalankan cek object permission
     # --- AKHIR GABUNGAN ---
     
     if order.status.upper() == 'EXPIRED':
@@ -408,25 +408,32 @@ class OrderCreateView(generics.CreateAPIView):
 class OrderListView(generics.ListAPIView):
     """
     View untuk menampilkan daftar semua pesanan.
-    Endpoint ini dilindungi dan hanya bisa diakses oleh Kasir atau Admin.
+    ...
     """
     serializer_class = OrderSerializer
-    permission_classes = [IsAuthenticated] # -> Memastikan user adalah Kasir/Staff global
+    permission_classes = [IsAuthenticated]
 
-    # --- PERUBAHAN (Logika filter dari Branch 2) ---
+    # --- INI ADALAH KODE FINAL YANG BENAR ---
     def get_queryset(self):
         user = self.request.user
+
+        # Ambil QuerySet dasar, diurutkan
         base_qs = Order.objects.prefetch_related(
             'items', 'items__menu_item', 'tenant', 'table'
-        ).order_by('-created_at')
-        
-        # Jika user bukan staff global (superadmin),
-        # filter hanya order dari tenant tempat dia terdaftar sebagai staff
+        ).order_by('-created_at') 
+
+        # Logika filter BARU:
         if not user.is_staff:
-            base_qs = base_qs.filter(tenant__staff=user)
+            # 1. Dapatkan dulu daftar ID Tenant (stand) di mana user ini adalah staf
+            #    (Menggunakan 'tenants' dari related_name di models.py)
+            user_tenant_ids = user.tenants.values_list('id', flat=True)
             
+            # 2. Filter pesanan yang 'tenant_id'-nya ada di dalam daftar ID tersebut
+            base_qs = base_qs.filter(tenant_id__in=user_tenant_ids)
+        
+        # Dengan cara ini, kita tidak perlu .distinct() lagi
         return base_qs
-    # --- AKHIR PERUBAHAN ---
+    # --- AKHIR KODE FINAL ---
 
 class TableQRCodeView(APIView):
     permission_classes = [permissions.AllowAny] 

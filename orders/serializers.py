@@ -108,8 +108,8 @@ class OrderItemSerializer(serializers.ModelSerializer):
 class OrderSerializer(serializers.ModelSerializer):
     items = OrderItemSerializer(many=True, read_only=True)
     tenant = StandSerializer() 
-    table = TableSerializer()
-    customer = CustomerSerializer()
+    table = TableSerializer(allow_null=True)      # <-- TAMBAHKAN INI
+    customer = CustomerSerializer(allow_null=True)  # <-- TAMBAHKAN INI
     class Meta:
         model = Order
         fields = ['id','uuid', 'references_code', 'tenant', 'table', 'customer', 'status', 'payment_method', 'total', 'items', 'created_at', 'paid_at', 'meta']

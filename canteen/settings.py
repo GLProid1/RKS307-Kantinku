@@ -147,7 +147,26 @@ STATIC_URL = 'static/'
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
-CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOWED_ORIGINS = [
+    # --- Aplikasi Pelanggan ---
+    'http://localhost:5173',       # Pelanggan (Komputer)
+    'http://10.170.12.208:5173',  # Pelanggan (HP)
+
+    # --- Aplikasi Tenant (Seller) ---
+    'http://localhost:5174',       # Tenant (Komputer)
+    'http://10.170.12.208:5174',  # Tenant (HP)
+    
+    # --- Aplikasi Kasir ---
+    'http://localhost:5175',       # Kasir (Komputer)
+    'http://10.170.12.208:5175',  # Kasir (HP)
+    
+    # --- Aplikasi Admin ---
+    'http://localhost:5176',       # Admin (Komputer)
+    'http://10.170.12.208:5176',  # Admin (HP)
+]
+
+# Pastikan ini tetap ada
+CORS_ALLOW_CREDENTIALS = True
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'

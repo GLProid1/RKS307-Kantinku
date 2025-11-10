@@ -25,7 +25,7 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     
     # Baris ini akan menangani awalan 'orders/' dan mendelegasikannya
-    path('orders/', include('orders.urls')), 
+    path('', include('orders.urls')), 
     path('api/', include('orders.urls'))
 ]
 

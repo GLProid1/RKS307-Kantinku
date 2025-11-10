@@ -25,7 +25,7 @@ from .serializers import (
     VariantGroupCreateSerializer, VariantOptionSerializer
 )
 from .permissions import (
-    IsKasir, IsAdminUser, IsTenantStaff, 
+    IsAdminUser, IsTenantStaff, 
     IsOrderTenantStaff, IsGuestOrderOwner,IsCashierUser
 )
 from .tasks import send_order_paid_notification
@@ -260,7 +260,7 @@ class OrderDetailView(APIView):
   
   def get(self, request, order_uuid):
     order = get_object_or_404(Order, uuid=order_uuid)
-    self.check_object_permission(request, order)
+    self.check_object_permissions(request, order)
       
     if order.expired_at and timezone.now() > order.expired_at and order.status != 'EXPIRED':
       order.status = 'EXPIRED'

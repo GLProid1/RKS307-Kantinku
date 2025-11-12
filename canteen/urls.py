@@ -20,10 +20,13 @@ from django.contrib import admin
 from django.urls import path, include # Pastikan 'include' sudah di-import
 from django.conf import settings
 from django.conf.urls.static import static
+from orders.views import LoginView, LogoutView, CheckAuthView
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    
+    path('api/auth/login/', LoginView.as_view(), name='api-login'),
+    path('api/auth/logout/', LogoutView.as_view(), name='api-logout'),
+    path('api/auth/user/', CheckAuthView.as_view(), name='api-check-auth'),
     # Baris ini akan menangani awalan 'orders/' dan mendelegasikannya
     path('', include('orders.urls')), 
     path('api/', include('orders.urls'))

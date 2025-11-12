@@ -9,6 +9,7 @@ from django.db import models
 from django.db.models import Sum, Count, Avg, Q
 from django.db.models.functions import TruncHour
 from django.contrib.auth.models import User, Group
+from django.contrib.auth import login, logout, authenticate
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework import status, permissions, generics, viewsets, serializers
 
@@ -686,3 +687,45 @@ class VariantOptionViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         group = self.get_group()
         serializer.save(group=group)
+
+class LoginView(APIView):
+    """
+    View untuk login. Menggunakan username & password,
+    mengembalikan data user dan men-set httpOnly session cookie.
+    """
+    permission_classes = [AllowAny] # WAJIB, karena default sekarang IsAuthenticated
+
+    def post(self, request, format=None):
+        username = request.data.get('username')
+        password = request.data.get('password')
+        
+        user = authenticate(request, username=username, password=password)
+        
+        if user is not None:
+            login(request, user) # Django akan otomatis men-set cookie
+            return Response(UserSerializer(user).data)
+        else:
+            return Response(
+                {"detail": "Username atau password salah."}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+class LogoutView(APIView):
+    """
+    View untuk logout. Menghapus session cookie.
+    """
+    permission_classes = [IsAuthenticated] # Harus login untuk bisa logout
+
+    def post(self, request, format=None):
+        logout(request) # Django akan otomatis menghapus cookie
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+class CheckAuthView(APIView):
+    """
+    View untuk mengecek status login (cookie).
+    """
+    permission_classes = [IsAuthenticated] # Hanya user terautentikasi yang bisa lolos
+
+    def get(self, request, format=None):
+        # Jika sampai sini (lolos permission), berarti cookie valid
+        return Response(UserSerializer(request.user).data)

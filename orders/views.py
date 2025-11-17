@@ -481,10 +481,15 @@ class StandViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
         if user.is_authenticated:
-            if user.is_staff:
+            # Jika user adalah Admin (is_staff) ATAU ada di grup 'Cashier',
+            # tampilkan SEMUA tenant.
+            if user.is_staff or user.groups.filter(name='Cashier').exists():
                 return Tenant.objects.all()
             else:
+                # Jika bukan (berarti dia Seller), tampilkan hanya tenant miliknya.
                 return user.tenants.all()
+
+        # Jika tidak login sama sekali, tampilkan tenant yang aktif saja.
         return Tenant.objects.filter(active=True)
 
     @action(detail=True, methods=['post'], permission_classes=[IsAdminUser], url_path='manage-staff')
@@ -743,3 +748,69 @@ class CheckAuthView(APIView):
     def get(self, request, format=None):
         # Jika sampai sini (lolos permission), berarti cookie valid
         return Response(UserSerializer(request.user).data)
+    
+class LaporanKeuanganAPIView(APIView):
+    """
+    View khusus untuk Laporan Keuangan Kasir.
+    Menerima filter: ?periode= & ?stand_id=
+    """
+    permission_classes = [IsCashierUser] # Hanya Kasir & Admin
+
+    def get(self, request, *args, **kwargs):
+        periode = request.query_params.get('periode', 'hari-ini')
+        stand_id = request.query_params.get('stand_id')
+
+        # Tentukan rentang tanggal berdasarkan filter periode
+        today = timezone.now().date()
+        start_date = today
+        end_date = today + timedelta(days=1) # Sampai awal hari berikutnya
+
+        if periode == 'kemarin':
+            start_date = today - timedelta(days=1)
+            end_date = today
+        elif periode == '7-hari':
+            start_date = today - timedelta(days=6)
+        
+        # Kustom tidak diimplementasikan dulu, bisa ditambahkan nanti
+        
+        # Filter dasar untuk semua order yang SUDAH LUNAS
+        qs = Order.objects.filter(
+            status__in=['PAID', 'PROCESSING', 'READY', 'COMPLETED'],
+            created_at__gte=start_date,
+            created_at__lt=end_date
+        )
+
+        # Filter berdasarkan stand jika dipilih
+        if stand_id and stand_id != 'semua':
+            qs = qs.filter(tenant_id=stand_id)
+
+        # 1. Hitung Stats
+        stats = qs.aggregate(
+            totalPendapatanTunai=Sum('total', filter=Q(payment_method='CASH')),
+            totalPendapatanTransfer=Sum('total', filter=Q(payment_method='TRANSFER')),
+            totalTransaksi=Count('id')
+        )
+
+        # 2. Siapkan data Transaksi untuk tabel
+        # (Kita format agar cocok dengan TransactionTable.jsx)
+        transactions_data = []
+        for tx in qs.order_by('-created_at'):
+            transactions_data.append({
+                "id": tx.references_code,
+                "waktu": tx.created_at.strftime('%d %b %Y, %H:%M'),
+                "namaStand": tx.tenant.name,
+                "metodeBayar": "Tunai" if tx.payment_method == 'CASH' else "Transfer",
+                "total": tx.total
+            })
+
+        # 3. Siapkan data respons
+        data = {
+            "stats": {
+                "totalPendapatanTunai": stats.get('totalPendapatanTunai') or 0,
+                "totalPendapatanTransfer": stats.get('totalPendapatanTransfer') or 0,
+                "totalTransaksi": stats.get('totalTransaksi') or 0,
+            },
+            "transactions": transactions_data
+        }
+        
+        return Response(data, status=status.HTTP_200_OK)

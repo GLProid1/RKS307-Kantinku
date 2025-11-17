@@ -20,7 +20,9 @@ from .views import (
      
     LoginView,
     LogoutView,
-    CheckAuthView # <-- Impor ViewSet baru
+    CheckAuthView,
+     
+    LaporanKeuanganAPIView # <-- Impor ViewSet baru
 )
 
 # --- BAGIAN ROUTER (Gabungan) ---
@@ -43,8 +45,9 @@ urlpatterns = [
     path('auth/login/', LoginView.as_view(), name='auth-login'),
     path('auth/logout/', LogoutView.as_view(), name='auth-logout'),
     path('auth/user/', CheckAuthView.as_view(), name='auth-check'),
-    
+
     path('reports/summary/', ReportDashboardAPIView.as_view(), name='reports-summary'),
+    path('reports/laporan-keuangan/', LaporanKeuanganAPIView.as_view(), name='reports-laporan-keuangan'),
     
     # --- PERBAIKAN: Hapus prefiks "orders/" ---
     path("create/", CreateOrderView.as_view(), name='create-order'),
@@ -65,6 +68,7 @@ urlpatterns = [
     path('', include(router.urls)),
     path('', include(stands_router.urls)),
     path('', include(groups_router.urls)),
+    
 ]
 
 if settings.DEBUG:

@@ -6,7 +6,7 @@ from django.utils import timezone
 from datetime import timedelta
 from django.db import transaction
 from django.db import models
-from django.db.models import Sum, Count, Avg, Q
+from django.db.models import Sum, Count, Avg, Q, OuterRef, Subquery, IntegerField
 from django.db.models.functions import TruncHour
 from django.contrib.auth.models import User, Group
 from django.contrib.auth import login, logout, authenticate
@@ -47,6 +47,42 @@ def initiate_payment_for_order(order: Order):
   order.save(update_fields=['meta'])
   return payload
 
+class PopularMenusView(generics.ListAPIView):
+    """
+    Mengembalikan daftar menu yang paling banyak dipesan (populer)
+    dari semua stand yang aktif dan menu yang tersedia.
+    (Versi query yang sudah dioptimalkan)
+    """
+    serializer_class = MenuItemSerializer
+    permission_classes = [AllowAny]
+
+    def get_queryset(self):
+        # 1. Hitung 10 menu_item_id terlaris dari tabel OrderItem
+        # Ini adalah query pertama (cepat)
+        top_menu_item_ids = OrderItem.objects.values('menu_item_id') \
+            .annotate(total_sold=Sum('qty')) \
+            .filter(total_sold__gt=0) \
+            .order_by('-total_sold') \
+            .values_list('menu_item_id', flat=True)[:10]
+
+        # 2. Ambil objek MenuItem yang lengkap berdasarkan 10 ID teratas
+        #    Pastikan juga tenant-nya aktif & item-nya available
+        # Ini adalah query kedua (cepat)
+        top_menu_items = MenuItem.objects.filter(
+            pk__in=list(top_menu_item_ids), # Ambil hanya yang ID-nya ada di daftar
+            available=True,
+            tenant__active=True
+        ).prefetch_related('tenant') # Optimalisasi
+
+        # 3. Buat dictionary untuk memetakan id -> item
+        items_map = {item.id: item for item in top_menu_items}
+        
+        # 4. Kembalikan daftar yang sudah terurut berdasarkan 'top_menu_item_ids'
+        #    (karena 'pk__in' tidak menjamin urutan)
+        sorted_items = [items_map[item_id] for item_id in top_menu_item_ids if item_id in items_map]
+        
+        return sorted_items
+    
 class CreateOrderView(APIView):
   permission_classes = [permissions.AllowAny]
 
@@ -376,22 +412,31 @@ class OrderListView(generics.ListAPIView):
 
     def get_queryset(self):
         user = self.request.user
-
-        # 1. Mulai dengan kueri dasar
         base_qs = Order.objects.all()
 
-        if not user.is_staff:
-            # 2. Dapatkan ID tenant milik user
+        # --- PERBAIKAN LOGIKA IZIN ---
+        # Jika user BUKAN Admin (is_staff) DAN BUKAN Kasir
+        if not user.is_staff and not user.groups.filter(name='Cashier').exists():
+            # Maka dia adalah Seller, filter berdasarkan tenant-nya
             user_tenant_ids = user.tenants.values_list('id', flat=True)
-            
-            # 3. FILTER DULU berdasarkan ID tersebut
             base_qs = base_qs.filter(tenant_id__in=user_tenant_ids)
+        
+        # Admin dan Kasir akan melewati 'if' dan mendapatkan Order.objects.all()
+        
+        # --- TAMBAHAN: TERAPKAN FILTER DARI URL ---
+        status = self.request.query_params.get('status')
+        payment_method = self.request.query_params.get('payment_method')
+
+        if status:
+            base_qs = base_qs.filter(status=status)
+        if payment_method:
+            base_qs = base_qs.filter(payment_method=payment_method)
+        # --- AKHIR TAMBAHAN ---
 
         # 4. Lakukan prefetch dan order_by SETELAH filter
         return base_qs.prefetch_related(
             'items', 'items__menu_item', 'tenant', 'table'
         ).order_by('-created_at')
-# --- AKHIR PERBAIKAN TOTAL ---
 
 class TableQRCodeView(APIView):
     permission_classes = [permissions.AllowAny] 
@@ -531,11 +576,18 @@ class StandViewSet(viewsets.ModelViewSet):
 
 class MenuItemViewSet(viewsets.ModelViewSet):
     serializer_class = MenuItemSerializer
-    parser_classes = (MultiPartParser, FormParser,JSONParser)
+    parser_classes = (MultiPartParser, FormParser, JSONParser)
 
     def get_queryset(self):
         stand_pk = self.kwargs.get('stand_pk')
-        return MenuItem.objects.filter(tenant_id=stand_pk)
+        
+        # +++ INI ADALAH PERBAIKANNYA +++
+        # Kita prefetch semua data terkait (varian dan opsi) dalam satu query
+        return MenuItem.objects.filter(
+            tenant_id=stand_pk
+        ).prefetch_related(
+            'variant_groups', 
+            'variant_groups__options')
 
     def get_tenant(self):
         stand_pk = self.kwargs.get('stand_pk')

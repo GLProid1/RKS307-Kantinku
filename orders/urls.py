@@ -22,7 +22,8 @@ from .views import (
     LogoutView,
     CheckAuthView,
      
-    LaporanKeuanganAPIView # <-- Impor ViewSet baru
+    LaporanKeuanganAPIView,
+    PopularMenusView # <-- Impor ViewSet baru
 )
 
 # --- BAGIAN ROUTER (Gabungan) ---
@@ -45,6 +46,8 @@ urlpatterns = [
     path('auth/login/', LoginView.as_view(), name='auth-login'),
     path('auth/logout/', LogoutView.as_view(), name='auth-logout'),
     path('auth/user/', CheckAuthView.as_view(), name='auth-check'),
+
+    path('popular-menus/', PopularMenusView.as_view(), name='popular-menus'),
 
     path('reports/summary/', ReportDashboardAPIView.as_view(), name='reports-summary'),
     path('reports/laporan-keuangan/', LaporanKeuanganAPIView.as_view(), name='reports-laporan-keuangan'),

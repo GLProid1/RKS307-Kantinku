@@ -16,7 +16,11 @@ from .views import (
     MenuItemViewSet,
     ReportDashboardAPIView,
     VariantGroupViewSet,
-    VariantOptionViewSet  # <-- Impor ViewSet baru
+    VariantOptionViewSet,
+     
+    LoginView,
+    LogoutView,
+    CheckAuthView # <-- Impor ViewSet baru
 )
 
 # --- BAGIAN ROUTER (Gabungan) ---
@@ -36,6 +40,10 @@ groups_router.register(r'options', VariantOptionViewSet, basename='group-options
 # --- DAFTAR URL PATTERN (Gabungan) ---
 
 urlpatterns = [
+    path('auth/login/', LoginView.as_view(), name='auth-login'),
+    path('auth/logout/', LogoutView.as_view(), name='auth-logout'),
+    path('auth/user/', CheckAuthView.as_view(), name='auth-check'),
+    
     path('reports/summary/', ReportDashboardAPIView.as_view(), name='reports-summary'),
     
     # --- PERBAIKAN: Hapus prefiks "orders/" ---

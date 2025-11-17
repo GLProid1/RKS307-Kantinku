@@ -446,6 +446,20 @@ class UserViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         permission_classes = [IsAdminUser]
         return [permission() for permission in permission_classes]
+    
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        
+        # 1. Hapus relasi ManyToMany DULU.
+        #    Kita gunakan 'instance.tenants' karena related_name='tenants'
+        #    pada model Tenant.
+        instance.tenants.clear() 
+        
+        # 2. Sekarang, aman untuk menghapus User
+        self.perform_destroy(instance)
+        
+        # 3. Kembalikan respons sukses
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=False, methods=['get'])
     def summary(self, request):

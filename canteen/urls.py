@@ -24,9 +24,11 @@ from django.conf.urls.static import static
 urlpatterns = [
     path('admin/', admin.site.urls),
     
-    # Baris ini akan menangani awalan 'orders/' dan mendelegasikannya
-    path('', include('orders.urls')), 
-    path('api/', include('orders.urls'))
+    # Semua endpoint API di bawah prefix 'api/
+    path('api/', include('orders.urls')),
+    path('tenants/', include('tenants.urls')),  # Tambahkan ini untuk meng-include URL dari aplikasi tenants
+    path('api/cashier/', include(('cashier.urls', 'cashier'))),  # Tambahkan ini untuk meng-include URL dari aplikasi cashier
+    path('api/users/', include(('users.urls', 'users'))),  # Tambahkan ini untuk meng-include URL dari aplikasi users')
 ]
 
 if settings.DEBUG:

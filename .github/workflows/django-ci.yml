@@ -1,0 +1,50 @@
+# Nama workflow yang akan muncul di tab "Actions" di Github
+name: DjangoCI
+
+# Pemicu, kapan workflow dijalankan
+on:
+  # Jalankan pada setiap 'push' ke semua branch
+  push:
+    branches: [ "**" ]
+  # Jalankan juga ketika ada "pull request" yang menargetkan branch 'main'
+  pull_request:
+    branches: [ "main", "master" ]
+
+# Daftar pekerjaan yang akan dijalankan
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        # Menentukan versi python yang digunakan
+        python-version: [ "3.13.1"]
+
+    # Langkah-langkah yang di eksekusi
+    steps:
+      # 1. Mengunduh kode dari repositori ke runner
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 2. Menyiapkan lingkungan Python sesuai dengan versi matrix
+      - name: Set up python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      # 3. Menginstall semua dependensi dari requirements.txt
+      - name: Install Dependencies
+        run:
+          python -m pip install --upgrade pip
+          pip isntall -r requirements.txt
+
+      # 4. Membuat file .env dari Github Secret
+      - name: Create .env file
+        run: |
+          echo "SECRET_KEY = ${{ secrets.SECRET_KEY }}" >> .env
+          echo "DEBUG = True" >> .env
+          # Django test runner akan membuat database secara otomatis
+
+      # 5. Menjalankan tes Django
+      - name: Run Tests
+        run: |
+          python manage.py test

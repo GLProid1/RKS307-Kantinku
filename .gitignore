@@ -7,3 +7,4 @@ __pycache__/*
 *.pyc
 migrations/
 migrations/*
+docker-compose.yml

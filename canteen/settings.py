@@ -24,15 +24,12 @@ load_dotenv(os.path.join(BASE_DIR, ".env"))
 
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = os.getenv("SECRET_KEY")
-
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
-
-ALLOWED_HOSTS = ['*']
+DEBUG = os.getenv('DEBUG', 'False') == 'True'
+ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
 
 
 # Application definition
-
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
@@ -40,30 +37,41 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'channels',
     'orders',
+    'tenants',
+    'reports',
+    'users',
+    'drf_spectacular',
+    'cashier',
     'corsheaders',
     'rest_framework',
     'rest_framework.authtoken',
 ]
 
+EMAIL_BACKEND = os.getenv("EMAIL_BACKEND", 'django.core.mail.backends.smtp.EmailBackend')
+EMAIL_HOST = os.getenv("EMAIL_HOST")
+EMAIL_PORT = os.getenv("EMAIL_PORT", 587)
+EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", 'True') == 'True'
+EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER")
+EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD")
+
 REST_FRAMEWORK = {
-    "DEFAULT_AUTHENTICATION_CLASSES": (
-        "rest_framework.authentication.SessionAuthentication",
+    "DEFAULT_AUTHENTICATION_CLASSES": [
         'rest_framework.authentication.TokenAuthentication',
-    ),
-    "DEFAULT_PERMISSION_CLASSES": (
+    ],
+    "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.AllowAny",
-    )
+    ],
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+    'DEFAULT_RENDERER_CLASSES': [
+        'rest_framework.renderers.JSONRenderer',
+        'rest_framework.renderers.BrowsableAPIRenderer',
+    ],
 }
 
-CELERY_BROKER_URL = "redis://localhost:6379/0"
-CELERY_RESULT_BACKEND = "redis://localhost:6379/1"
-
-# Payment & third-party (fill with env variables)
-MIDTRANS_SERVER_KEY = "<your_midtrans_server_key>"
-TWILIO_ACCOUNT_SID = "<twilio_sid>"
-TWILIO_AUTH_TOKEN = "<twilio_token>"
-WHATSAPP_FROM = "whatsapp:+62812..."
+CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/0")
+CELERY_RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND", "redis://localhost:6379/1")
 
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
@@ -81,7 +89,7 @@ ROOT_URLCONF = 'canteen.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        'DIRS': [BASE_DIR / 'templates'],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -94,15 +102,29 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'canteen.wsgi.application'
-
+# Konfigurasi ASGI
+ASGI_APPLICATION = 'canteen.asgi.application'
+# Konfigurasi Channel Layers
+CHANNEL_LAYERS = {
+    'default': {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            "hosts": [("127.0.0.1", 6379)],
+        },
+    },
+}
 
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': os.getenv('DB_ENGINE', 'django.db.backends.postgresql'),
+        'NAME': os.getenv('DB_NAME'),
+        'USER': os.getenv('DB_USER'),
+        'PASSWORD': os.getenv('DB_PASSWORD'),
+        'HOST': os.getenv('DB_HOST'),
+        'PORT': os.getenv('DB_PORT')
     }
 }
 
@@ -116,12 +138,21 @@ AUTH_PASSWORD_VALIDATORS = [
     },
     {
         'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
+        'OPTIONS' : {
+            'min_length': 8,
+        }
     },
     {
         'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
     },
     {
         'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
+    },
+    {
+        'NAME': 'users.validators.UppercaseValidator',
+    },
+    {
+        'NAME': 'users.validators.SpecialCharacterValidator',
     },
 ]
 
@@ -137,34 +168,13 @@ USE_I18N = True
 
 USE_TZ = True
 
-
-# Static files (CSS, JavaScript, Images)
-# https://docs.djangoproject.com/en/5.2/howto/static-files/
-
 STATIC_URL = 'static/'
-
-# Default primary key field type
-# https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
-
-DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
-CORS_ALLOWED_ORIGINS = [
-    # --- Aplikasi Pelanggan ---
-    'http://localhost:5173',       # Pelanggan (Komputer)
-    'http://10.170.12.208:5173',  # Pelanggan (HP)
-
-    # --- Aplikasi Tenant (Seller) ---
-    'http://localhost:5174',       # Tenant (Komputer)
-    'http://10.170.12.208:5174',  # Tenant (HP)
-    
-    # --- Aplikasi Kasir ---
-    'http://localhost:5175',       # Kasir (Komputer)
-    'http://10.170.12.208:5175',  # Kasir (HP)
-    
-    # --- Aplikasi Admin ---
-    'http://localhost:5176',       # Admin (Komputer)
-    'http://10.170.12.208:5176',  # Admin (HP)
+STATICFILES_DIR = [
+    BASE_DIR / 'static',
 ]
 
+DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+CORS_ALLOWED_ORIGINS = os.getenv('CORS_ALLOWED_ORIGINS', '').split(',')
 # Pastikan ini tetap ada
 CORS_ALLOW_CREDENTIALS = True
 

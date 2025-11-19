@@ -20,6 +20,7 @@ from django.contrib import admin
 from django.urls import path, include # Pastikan 'include' sudah di-import
 from django.conf import settings
 from django.conf.urls.static import static
+from drf_spectacular.views import SpectacularAPIView, SpectacularRedocView, SpectacularSwaggerView
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -29,6 +30,12 @@ urlpatterns = [
     path('tenants/', include('tenants.urls')),  # Tambahkan ini untuk meng-include URL dari aplikasi tenants
     path('api/cashier/', include(('cashier.urls', 'cashier'))),  # Tambahkan ini untuk meng-include URL dari aplikasi cashier
     path('api/users/', include(('users.urls', 'users'))),  # Tambahkan ini untuk meng-include URL dari aplikasi users')
+    
+    # URL Dokumentasi API
+    path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
+    # Tampilan UI dokumentasi
+    path('api/docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
+    path('api/redoc/', SpectacularRedocView.as_view(url_name='schema'), name='redoc')
 ]
 
 if settings.DEBUG:

@@ -1,4 +1,4 @@
-# views.py
+import logging
 from django.shortcuts import get_object_or_404
 from django.http import HttpResponse
 from django.urls import reverse
@@ -9,7 +9,6 @@ from django.db import models
 from django.db.models import Sum, Count, Avg, Q
 from django.db.models.functions import TruncHour
 from django.contrib.auth.models import User, Group
-from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework import status, permissions, generics, viewsets, serializers
 
 from rest_framework.views import APIView
@@ -18,21 +17,22 @@ from rest_framework import status, permissions, generics, viewsets, serializers
 from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny, IsAuthenticated, OR
 
-from .models import Order, OrderItem, Customer, MenuItem, Tenant, Table, VariantOption, VariantGroup
+from .models import Order, OrderItem, Customer, MenuItem, Tenant, Table, generate_order_pin
 from .serializers import (
-    OrderSerializer, OrderCreateSerializer, MenuItemSerializer, UserSerializer, 
-    UserCreateSerializer, StandSerializer, VariantGroupSerializer, 
-    VariantGroupCreateSerializer, VariantOptionSerializer
+    OrderSerializer, OrderCreateSerializer
 )
 from .permissions import (
-    IsAdminUser, IsTenantStaff, 
-    IsOrderTenantStaff, IsGuestOrderOwner,IsCashierUser
+    IsOrderTenantStaff, IsGuestOrderOwner
 )
-from .tasks import send_order_paid_notification
-
+from .tasks import send_order_paid_notification, send_cash_order_invoice
+from tenants.models import Tenant, MenuItem, VariantOption
+from tenants.serializers import MenuItemSerializer
 import qrcode
 import io
 
+
+security_logger = logging.getLogger("security")
+order_logger = logging.getLogger("orders")
 
 # Placeholder: dummy gateway payment
 def initiate_payment_for_order(order: Order):
@@ -60,9 +60,12 @@ class CreateOrderView(APIView):
       table,_ = Table.objects.get_or_create(code=data['table'])
 
     customer = None
+    name = data.get('name')
+    email = data.get('email')
     phone = data.get('phone')
-    if phone:
-      customer, _ = Customer.objects.get_or_create(phone=phone)
+    if email:
+        # Gunakan update_or_create untuk memperbarui nama/telepon jika email sudah ada
+      customer, _ = Customer.objects.get_or_create(email=email, defaults={'name': name, 'phone': phone})
       
     try:
       with transaction.atomic():
@@ -77,10 +80,20 @@ class CreateOrderView(APIView):
             if not menu_item or not menu_item.available or menu_item.stock < item_data['qty']:
                 raise serializers.ValidationError(f"Stok untuk '{menu_item.name if menu_item else 'item'}' tidak mencukupi atau tidak tersedia.")
 
+        cashier_pin = None
+        if data['payment_method'] == 'CASH':
+            # Loop untuk memastikan PIN unik untuk order yang masih aktif
+            while True:
+                pin = generate_order_pin()
+                if not Order.objects.filter(cashier_pin=pin, status__in=['AWAITING_PAYMENT', 'PAID']).exists():
+                    cashier_pin = pin
+                    break
+
         order = Order.objects.create(
           tenant=tenant, table=table, customer=customer,
           payment_method=data['payment_method'],
           status = 'AWAITING_PAYMENT',
+          cashier_pin=cashier_pin,
           expired_at = timezone.now() + timezone.timedelta(minutes=10)
         )
 
@@ -145,6 +158,11 @@ class CreateOrderView(APIView):
     if order.payment_method == 'TRANSFER':
       payment_info = initiate_payment_for_order(order)
     
+    # Perubahan: Kirim invoice ke email jika metode pembayaran CASH
+    elif order.payment_method== 'CASH':
+        # Kirim email sebagai backgroun task
+        transaction.on_commit(lambda: send_cash_order_invoice.delay(order.id))
+        
     if not request.user.is_authenticated:
         guest_uuids = request.session.get('guest_order_uuids', [])
         if str(order.uuid) not in guest_uuids:
@@ -199,62 +217,7 @@ class MidtransWehboohView(APIView):
       order.meta.setdefault("gateway_notification", []).append(payload)
       order.save(update_fields=['meta'])
       return Response({"detail": "Ok"}, status=200)
-    
-class CashConfirmView(APIView):
-  permission_classes = [IsCashierUser]
-  
-  def post(self, request, order_uuid):
-    order = get_object_or_404(Order, uuid=order_uuid)
-    
-    if order.status.upper() == 'EXPIRED':
-      return Response({"detail": "Order sudah kadaluarsa, tidak bisa dikonfirmasi"}, status=status.HTTP_400_BAD_REQUEST)
 
-    if order.expired_at and timezone.now() > order.expired_at:
-      order.status = "EXPIRED"
-      order.save(update_fields=['status'])
-      return Response({"detail": "Order sudah kadaluarsa, silahkan buat order baru"}, status=status.HTTP_400_BAD_REQUEST)
-
-    if order.payment_method != 'CASH':
-      return Response({"detail": f"Metode pembayaran ini bukan CASH"}, status=status.HTTP_400_BAD_REQUEST)
-
-    if order.status.upper() == 'PAID':
-      return Response({"detail": "Order sudah dibayar"}, status=status.HTTP_400_BAD_REQUEST)
-
-    with transaction.atomic():
-      order.refresh_from_db()
-      
-      if order.expired_at and timezone.now() > order.expired_at:
-        order.status = "EXPIRED"
-        order.save(update_fields=['status']) # BUGFIX: Menghapus paid_at, meta
-        return Response({"detail": "Order sudah kadaluarsa, silahkan buat order baru"}, status=status.HTTP_400_BAD_REQUEST)
-      
-      if order.status.upper() == "PAID":
-        return Response({"detail": "Order sudah dibayar"}, status=status.HTTP_400_BAD_REQUEST)
-      
-      order.status = "PAID"
-      order.paid_at = timezone.now()
-      meta = order.meta or {}
-      meta.setdefault("payments", []).append({
-        "method":"CASH",
-        "confirmed_by": request.user.username if request.user.is_authenticated else "anonymous",
-        "confirmed_at": order.paid_at.isoformat()
-      })
-      order.meta = meta
-      order.save(update_fields=['status', 'paid_at', 'meta'])
-      
-      # --- PERBAIKAN: Nonaktifkan Celery untuk sementara ---
-      # transaction.on_commit(lambda: send_order_paid_notification.delay(order.id))
-      
-    return Response({
-      "detail": "Order dikonfirmasi lunas.",
-      "order": {
-        "id": order.pk,
-        "references_code": order.references_code,
-        "status": order.status,
-        "paid_at": order.paid_at,
-      }
-    }, status=status.HTTP_200_OK)
-    
 class OrderDetailView(APIView):
   permission_classes = [IsOrderTenantStaff | IsGuestOrderOwner]
   
@@ -305,7 +268,7 @@ class UpdateOrderStatusView(APIView):
     def patch(self, request, order_uuid):
         order = get_object_or_404(Order, uuid=order_uuid)
         
-        self.check_object_permissions(request, order)
+        self.check_object_permission(request, order)
         
         new_status = request.data.get('status')
         if not new_status:
@@ -428,126 +391,6 @@ class TakeawayQRCodeView(APIView):
         buffer.seek(0)
         
         return HttpResponse(buffer, content_type="image/png")
-    
-class ManageMenuItemView(generics.UpdateAPIView):
-  queryset = MenuItem.objects.all()
-  serializer_class = MenuItemSerializer
-  permission_classes = [IsTenantStaff]
-
-class UserViewSet(viewsets.ModelViewSet):
-    queryset = User.objects.all().order_by('username')
-
-    def get_serializer_class(self):
-        if self.action == 'create':
-            return UserCreateSerializer
-        return UserSerializer
-
-    def get_permissions(self):
-        permission_classes = [IsAdminUser]
-        return [permission() for permission in permission_classes]
-
-    @action(detail=False, methods=['get'])
-    def summary(self, request):
-        admin_count = User.objects.filter(groups__name='Admin').count()
-        seller_count = User.objects.filter(groups__name='Seller').count()
-        cashier_count = User.objects.filter(groups__name='Cashier').count()
-        
-        summary_data = {
-            'admins': {'count': admin_count, 'description': 'Full system access'},
-            'sellers': {'count': seller_count, 'description': 'Manage stands & menus'},
-            'cashiers': {'count': cashier_count, 'description': 'Process payments'},
-        }
-        return Response(summary_data)
-    
-class StandViewSet(viewsets.ModelViewSet):
-    serializer_class = StandSerializer
-    parser_classes = (MultiPartParser, FormParser)
-
-    def get_queryset(self):
-        user = self.request.user
-        if user.is_authenticated:
-            if user.is_staff:
-                return Tenant.objects.all()
-            else:
-                return user.tenants.all()
-        return Tenant.objects.filter(active=True)
-
-    @action(detail=True, methods=['post'], permission_classes=[IsAdminUser], url_path='manage-staff')
-    def manage_staff(self, request, pk=None):
-        tenant = self.get_object()
-        user_id = request.data.get('user_id')
-        action = request.data.get('action')
-
-        if not user_id or not action:
-            return Response({"error": "user_id dan action diperlukan"}, status=status.HTTP_400_BAD_REQUEST)
-
-        try:
-            user = User.objects.get(pk=user_id, groups__name='Seller')
-        except User.DoesNotExist:
-            return Response({"error": "User Seller tidak ditemukan"}, status=status.HTTP_44_NOT_FOUND)
-
-        if action == 'add':
-            tenant.staff.add(user)
-            return Response({"status": f"User {user.username} ditambahkan ke {tenant.name}"}, status=status.HTTP_200_OK)
-        elif action == 'remove':
-            tenant.staff.remove(user)
-            return Response({"status": f"User {user.username} dihapus dari {tenant.name}"}, status=status.HTTP_200_OK)
-        else:
-            return Response({"error": "Action tidak valid (gunakan 'add' atau 'remove')"}, status=status.HTTP_400_BAD_REQUEST)
-
-    def get_permissions(self):
-        if self.action in ['list', 'retrieve']:
-            permission_classes = [AllowAny]
-        elif self.action in ['create', 'destroy']:
-            permission_classes = [IsAdminUser]
-        elif self.action in ['update', 'partial_update']:
-            permission_classes = [IsTenantStaff]
-        elif self.action == 'manage_staff':
-            permission_classes = [IsAdminUser]
-        else:
-            permission_classes = [IsAuthenticated]
-        
-        return [permission() for permission in permission_classes]
-
-class MenuItemViewSet(viewsets.ModelViewSet):
-    serializer_class = MenuItemSerializer
-    parser_classes = (MultiPartParser, FormParser,JSONParser)
-
-    def get_queryset(self):
-        stand_pk = self.kwargs.get('stand_pk')
-        return MenuItem.objects.filter(tenant_id=stand_pk)
-
-    def get_tenant(self):
-        stand_pk = self.kwargs.get('stand_pk')
-        return get_object_or_404(Tenant, pk=stand_pk)
-
-    def get_permissions(self):
-        if self.action in ['list', 'retrieve']:
-            permission_classes = [permissions.AllowAny]
-        else:
-            permission_classes = [IsTenantStaff] 
-            
-        return [permission() for permission in permission_classes]
-
-    def check_object_permissions(self, request, obj):
-        if self.action not in ['list', 'retrieve']:
-            tenant = self.get_tenant()
-            for permission in self.get_permissions():
-                if not permission.has_object_permission(request, self, tenant):
-                    self.permission_denied(request)
-        
-    def perform_create(self, serializer):
-        tenant = self.get_tenant()
-        self.check_object_permissions(self.request, tenant)
-        serializer.save(tenant=tenant)
-
-    def perform_update(self, serializer):
-        self.check_object_permissions(self.request, serializer.instance.tenant)
-        serializer.save()
-
-    def perform_destroy(self, instance):
-        self.check_object_permissions(self.request, instance.tenant)
-        instance.delete()
 
 # --- PERBAIKAN TOTAL UNTUK MASALAH DUPLIKAT ---
 class ReportDashboardAPIView(APIView):
@@ -631,58 +474,3 @@ class ReportDashboardAPIView(APIView):
             'stand_performance': formatted_stand_performance,
         }
         return Response(data, status=status.HTTP_200_OK)
-# --- AKHIR PERBAIKAN TOTAL ---
-    
-class VariantGroupViewSet(viewsets.ModelViewSet):
-    serializer_class = VariantGroupSerializer
-
-    def get_queryset(self):
-        stand_pk = self.kwargs.get('stand_pk')
-        return VariantGroup.objects.filter(tenant_id=stand_pk)
-
-    def get_tenant(self):
-        stand_pk = self.kwargs.get('stand_pk')
-        return get_object_or_404(Tenant, pk=stand_pk)
-
-    def get_permissions(self):
-        tenant = self.get_tenant()
-        
-        if not (IsAdminUser().has_permission(self.request, self) or 
-                IsTenantStaff().has_object_permission(self.request, self, tenant)):
-            self.permission_denied(self.request)
-            
-        return [IsAuthenticated()]
-
-    def get_serializer_class(self):
-        if self.action == 'create':
-            return VariantGroupCreateSerializer
-        return VariantGroupSerializer
-
-    def perform_create(self, serializer):
-        serializer.save(tenant=self.get_tenant())
-
-class VariantOptionViewSet(viewsets.ModelViewSet):
-    serializer_class = VariantOptionSerializer
-
-    def get_group(self):
-        stand_pk = self.kwargs.get('stand_pk')
-        group_pk = self.kwargs.get('group_pk')
-        
-        return get_object_or_404(VariantGroup, pk=group_pk, tenant_id=stand_pk)
-
-    def get_queryset(self):
-        group = self.get_group()
-        return VariantOption.objects.filter(group=group)
-
-    def get_permissions(self):
-        tenant = self.get_group().tenant
-        
-        if not (IsAdminUser().has_permission(self.request, self) or 
-                IsTenantStaff().has_object_permission(self.request, self, tenant)):
-            self.permission_denied(self.request)
-            
-        return [IsAuthenticated()]
-
-    def perform_create(self, serializer):
-        group = self.get_group()
-        serializer.save(group=group)

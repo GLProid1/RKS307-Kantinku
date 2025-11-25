@@ -30,10 +30,6 @@ from tenants.serializers import MenuItemSerializer
 import qrcode
 import io
 
-
-security_logger = logging.getLogger("security")
-order_logger = logging.getLogger("orders")
-
 # Placeholder: dummy gateway payment
 def initiate_payment_for_order(order: Order):
   payload = {

@@ -24,6 +24,7 @@ class OrderAPITests(APITestCase):
         data = {
             "tenant": self.tenant.pk,
             "payment_method": "CASH",
+            "name": "Pelanggan Test",
             "items": [
                 {"menu_item": self.menu_item1.pk, "qty": 2},
                 {"menu_item": self.menu_item2.pk, "qty": 1},
@@ -106,4 +107,4 @@ class OrderPermissionTests(APITestCase):
         # Tidak memanggil self.client.force_authenticate()
         response = self.client.get(self.order_detail_url)
         # IsOrderTenantStaff permission memerlukan login, jadi harusnya 403 Forebidden
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)

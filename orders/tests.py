@@ -25,6 +25,7 @@ class OrderAPITests(APITestCase):
             "tenant": self.tenant.pk,
             "payment_method": "CASH",
             "name": "Pelanggan Test",
+            "email": "pelanggan@test.com",
             "items": [
                 {"menu_item": self.menu_item1.pk, "qty": 2},
                 {"menu_item": self.menu_item2.pk, "qty": 1},

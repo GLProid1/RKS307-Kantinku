@@ -36,6 +36,9 @@ jobs:
         run:
           python -m pip install --upgrade pip && pip install -r requirements.txt
 
+      - name: Create Static Directory
+        run: mkdir -p static
+
       # 4. Membuat file .env dari Github Secret
       - name: Create .env file
         run: |

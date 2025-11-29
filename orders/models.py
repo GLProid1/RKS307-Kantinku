@@ -2,6 +2,7 @@ from django.db import models
 from django.utils import timezone
 from datetime import timedelta
 from django.db import transaction
+from tenants.models import Tenant, MenuItem, VariantOption
 import uuid
 import random
 import string
@@ -12,49 +13,9 @@ def generate_references_code(prefix="KNT"):
   rand = ''.join(random.choices(string.ascii_uppercase + string.digits, k=4))
   return f"{prefix}-{ts}-{rand}"
 
-class Tenant(models.Model):
-  name = models.CharField(max_length=50)
-  description = models.TextField(blank=True, null=True)
-  staff = models.ManyToManyField(settings.AUTH_USER_MODEL, related_name='tenants', blank=True)
-  active = models.BooleanField(default=True)
-  image = models.ImageField(upload_to='stand_images/', default='stand_images/default.png', blank=True)
-  
-  def __str__(self):
-    return self.name
-  
-class MenuItem(models.Model):
-  CATEGORY_CHOICES = [
-        ('FOOD', 'Makanan'),
-        ('DRINK', 'Minuman'),
-    ]
-  tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, related_name='menu_items')
-  name = models.CharField(max_length=50)
-  price = models.DecimalField(max_digits=12, decimal_places=2)
-  category = models.CharField(max_length=10, choices=CATEGORY_CHOICES, default='FOOD')
-  available = models.BooleanField(default=True)
-  stock = models.PositiveIntegerField(default=0, help_text="Jumlah stok tersedia. 0 berarti habis.")
-  description = models.TextField(blank=True, null=True)
-  image = models.ImageField(upload_to='menu_images/', default='menu_images/default.png', blank=True)
-  variant_groups = models.ManyToManyField('VariantGroup', blank=True, related_name='menu_items')
-  
-  def __str__(self):
-    return f"{self.name} ({self.tenant.name})"
-  
-class VariantGroup(models.Model):
-    tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, related_name='variant_groups')
-    name = models.CharField(max_length=50)
+def generate_order_pin(length=6):
+  return ''.join(random.choices(string.digits, k=length))
 
-    def __str__(self):
-        return f"{self.name} - ({self.tenant.name})"
-
-class VariantOption(models.Model):
-    group = models.ForeignKey(VariantGroup, on_delete=models.CASCADE, related_name='options')
-    name = models.CharField(max_length=50)
-    price = models.DecimalField(max_digits=10, decimal_places=2, default=0, help_text="Harga tambahan untuk opsi ini")
-
-    def __str__(self):
-        return f"{self.name} (+{self.price})"
-  
 class Table(models.Model):
   code = models.CharField(max_length=10, unique=True)
   label = models.CharField(max_length=50, blank=True)
@@ -63,8 +24,9 @@ class Table(models.Model):
     return self.code or self.label
   
 class Customer(models.Model):
-  phone = models.CharField(max_length=15, unique=True)
   name = models.CharField(max_length=100, blank=True, null=True)
+  email = models.EmailField(blank=True, null=True)
+  phone = models.CharField(max_length=15, blank=True, null=True)
   created_at = models.DateTimeField(auto_now_add=True)
   
   def __str__(self):
@@ -80,6 +42,7 @@ class Order(models.Model):
   
   uuid = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
   references_code = models.CharField(max_length=50, default=generate_references_code, unique=True)
+  cashier_pin = models.CharField(max_length=6, blank=True, null=True, help_text="PIN untuk konfirmasi kasir")
   table = models.ForeignKey(Table, on_delete=models.SET_NULL, null=True, blank=True)
   tenant = models.ForeignKey(Tenant, on_delete=models.PROTECT, related_name='orders')
   customer = models.ForeignKey(Customer, on_delete=models.SET_NULL, null=True, blank=True)
@@ -123,7 +86,7 @@ class OrderItem(models.Model):
   qty = models.PositiveIntegerField(default=1)
   price = models.DecimalField(max_digits=12, decimal_places=2)
   note = models.CharField(max_length=255, blank=True, null=True)
-  selected_variants = models.ManyToManyField('VariantOption', blank=True)
+  selected_variants = models.ManyToManyField('tenants.VariantOption', blank=True)
   
   def __str__(self):
     return f"{self.menu_item.name} x{self.qty} ({self.order.references_code})"

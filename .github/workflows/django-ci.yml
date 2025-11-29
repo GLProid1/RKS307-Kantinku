@@ -1,0 +1,45 @@
+name: DjangoCI
+
+on:
+  push:
+    branches: [ "**" ]
+  pull_request:
+    branches: [ "main", "master" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [ "3.13.1"]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # Buat folder static manual agar warning hilang
+      - name: Create Static Directory
+        run: mkdir -p static
+
+      # Tambahkan variabel CORS dummy agar error hilang
+      - name: Create .env file
+        run: |
+          echo "SECRET_KEY = ${{ secrets.SECRET_KEY }}" >> .env
+          echo "DEBUG = True" >> .env
+          echo "DB_ENGINE=django.db.backends.sqlite3" >> .env
+          echo "DB_NAME=db.sqlite3" >> .env
+          echo "CORS_ALLOWED_ORIGINS=http://127.0.0.1:8000,http://localhost:8000" >> .env
+
+      - name: Run Tests
+        run: |
+          python manage.py test

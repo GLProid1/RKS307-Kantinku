@@ -20,16 +20,22 @@ from django.contrib import admin
 from django.urls import path, include # Pastikan 'include' sudah di-import
 from django.conf import settings
 from django.conf.urls.static import static
-from orders.views import LoginView, LogoutView, CheckAuthView
+from drf_spectacular.views import SpectacularAPIView, SpectacularRedocView, SpectacularSwaggerView
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('api/auth/login/', LoginView.as_view(), name='api-login'),
-    path('api/auth/logout/', LogoutView.as_view(), name='api-logout'),
-    path('api/auth/user/', CheckAuthView.as_view(), name='api-check-auth'),
-    # Baris ini akan menangani awalan 'orders/' dan mendelegasikannya
-    path('', include('orders.urls')), 
-    path('api/', include('orders.urls'))
+    
+    # Semua endpoint API di bawah prefix 'api/
+    path('api/', include('orders.urls')), # orders.urls tidak perlu diubah
+    path('api/tenants/', include('tenants.urls')),  # Pindahkan tenants ke dalam /api/
+    path('api/cashier/', include(('cashier.urls', 'cashier'))),  # Tambahkan ini untuk meng-include URL dari aplikasi cashier
+    path('api/users/', include(('users.urls', 'users'))),  # Tambahkan ini untuk meng-include URL dari aplikasi users')
+    
+    # URL Dokumentasi API
+    path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
+    # Tampilan UI dokumentasi
+    path('api/docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
+    path('api/redoc/', SpectacularRedocView.as_view(url_name='schema'), name='redoc')
 ]
 
 if settings.DEBUG:

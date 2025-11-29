@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Instruksi Pembayaran Pesanan Anda</title>
+  <style>
+    body {
+      font-family: sans-serif; color: #333;
+    }
+    .container {
+      max-width: 600px; margin: 20px auto; padding: 20px; border: 1px solid #ddd; border-radius: 8px;
+    }
+    .header {
+      text-align: center; border-bottom: 1px solid #ddd; padding-bottom: 10px; margin-bottom: 20px;
+    }
+    .pin-box {background-color: #f0f0f0; border: 2px dashed #ccc; padding: 20px; text-align: center; margin: 20px 0; 
+    }
+    .pin-code {
+      font-size: 12px; text-align: center; color: #777; margin-top: 20px;
+    }
+    .footer {
+      font-size: 12px; text-align: center; color: #777; margin-top: 20px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h2>Terimakasih telah memesan di {{ tenant_name }}!</h2>
+    </div>
+    <p>Halo,</p>
+    <p>Pesanan Anda dengan nomor referensi <strong>#{{ order.references_code }}</strong> telah kami terima. Silahkan lakukan pembayaran tunai di kasir dengan menunjukkan PIN di bawah ini</p>
+
+    <div class="pin-box">
+      <p style="margin-top:0;">PIN PEMBAYARAN ANDA</p>
+      <div class="pin-code">{{ pin }}</div>
+    </div>
+
+    <h3>Detail Pesanan:</h3>
+    <ul>
+      {% for item in order.items.all %}
+        <li>{{ item.menu_item.name }} (x{{ item.qty }})</li>
+      {% endfor %}
+    </ul>
+    <p><strong>Total Pembayaran: Rp. {{ order.total|floatformat:2 }}</strong></p>
+
+    <p>Terimas kasih!</p>
+
+    <div class="footer">
+      <p>Ini adalah email yang dibuat secara otomatis. Mohon untuk tidak membalas email ini.</p>
+    </div>
+  </div>
+</body>
+</html>

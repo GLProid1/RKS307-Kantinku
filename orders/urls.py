@@ -17,6 +17,7 @@ from .views import (
 urlpatterns = [
     # Report
     path('reports/summary/', ReportDashboardAPIView.as_view(), name='reports-summary'),
+    path('reports/laporan-keuangan/', LaporanKeuanganAPIView.as_view(), name='reports-laporan-keuangan'),
     
     # Order URLs
     path('orders/', OrderListView.as_view(), name='order-list'), # GET untuk list

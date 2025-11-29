@@ -16,7 +16,7 @@ import re
 
 # Create your views here.
 class UserViewSet(viewsets.ModelViewSet):
-    queryset = User.objects.all().order_by('username')
+    queryset = User.objects.all().order_by('username') # Default queryset
 
     def get_serializer_class(self):
         if self.action == 'create':
@@ -26,26 +26,20 @@ class UserViewSet(viewsets.ModelViewSet):
         return UserSerializer
 
     def get_permissions(self):
-      if self.action == 'list' or self.action == 'create' or self.action == 'destroy':
+      if self.action in ['list', 'create', 'destroy', 'summary']:
         # Hanya admin yang boleh mengakses list, create, dan delete user
-        permissions_classes = [IsAdminUser]
-      elif self.action == 'retrieve' or self.action == 'update' or self.action == 'partial_update':
+        return [IsAdminUser()]
+      elif self.action in ['retrieve', 'update', 'partial_update']:
         # Admin hanya bisa melihat/mengedit user manapun. User biasa hanya bisa melihat/mengedit profilnya sendiri
-        permissions_classes = [IsAdminOrSelf]
-      else:
-        # Untuk aksi lain seperti 'summary', hanya admin yang boleh
-        permissions_classes = [IsAdminUser]
-      return [permission() for permission in permissions_classes]
+        return [IsAdminOrSelf()]
+      return super().get_permissions()
     
     def get_queryset(self):
       user = self.request.user
-      if user.is_authenticated and (user.is_staff or user.groups.filter(name='Admin').exists()):
-        # Admin bisa melihat semua user
-        return User.objects.all().order_by('username')
-      elif user.is_authenticated:
-        # User biasa hanya bisa melihat profilnya sendiri
+      if user.is_authenticated and not (user.is_staff or user.groups.filter(name='Admin').exists()):
+        # Admin user yang bisa melihat profil sendiri
         return User.objects.filter(pk=user.pk)
-      return User.objects.none() # Tidak ada user untuk permintaan yang tidak terautentikasi
+      return super().get_queryset() # Admin akan mendapatkan queryset default
 
     @action(detail=False, methods=['get'])
     def summary(self, request):
@@ -75,14 +69,8 @@ class LoginView(APIView):
     
     if user:
       # Untuk autentikasi token
-      # Tentukan peran pengguna berdasarkan grub
-      role = 'customer' # Default page, jika tidak ada grub spesifik
-      if user.groups.filter(name='Admin').exists():
-        role = 'admin'
-      elif user.groups.filter(name='Seller').exists():
-        role = 'seller'
-      elif user.groups.filter(name='Cashier').exists():
-        role = 'cashier'
+      # Ambil role dari grup pertama, atau 'customer' jika tidak ada grup
+      role = user.groups.first().name.lower() if user.groups.exists() else 'customer'
       token, created = Token.objects.get_or_create(user=user)
       return Response({
         "token": token.key,

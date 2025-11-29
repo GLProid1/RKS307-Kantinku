@@ -42,7 +42,7 @@ class CashConfirmView(APIView):
     # Transaksi atomik untuk memastikan integritas data
     with transaction.atomic():
       # Kunci order untuk mencegah race condition (SELECT FOR UPDATE)
-      order.objects.select_for_update().get(pk=order.pk)
+      order = Order.objects.select_for_update().get(pk=order.pk)
       # Validasi ulang di dalam transaksi untuk keamanan
       if order.status.upper() != "AWAITING_PAYMENT":
         return Response({"detail": "Order sudah dibayar"}, status=status.HTTP_400_BAD_REQUEST)

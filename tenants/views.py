@@ -74,32 +74,19 @@ class MenuItemViewSet(viewsets.ModelViewSet):
         return get_object_or_404(Tenant, pk=stand_pk)
 
     def get_permissions(self):
+        """
+        Menggunakan AllowAny untuk melihat, dan IsTenantStaffForNestedViews untuk semua aksi tulis.
+        Izin ini memeriksa kepemilikan tenant dari URL, yang lebih aman untuk create/list.
+        """
         if self.action in ['list', 'retrieve']:
-            permission_classes = [permissions.AllowAny]
+            self.permission_classes = [permissions.AllowAny]
         else:
-            permission_classes = [IsTenantStaff] 
-            
-        return [permission() for permission in permission_classes]
+            self.permission_classes = [IsAuthenticated, IsTenantStaffForNestedViews] 
+        return super().get_permissions()
 
-    def check_object_permissions(self, request, obj):
-        if self.action not in ['list', 'retrieve']:
-            tenant = self.get_tenant()
-            for permission in self.get_permissions():
-                if not permission.has_object_permission(request, self, tenant):
-                    self.permission_denied(request)
-        
     def perform_create(self, serializer):
         tenant = self.get_tenant()
-        self.check_object_permissions(self.request, tenant)
         serializer.save(tenant=tenant)
-
-    def perform_update(self, serializer):
-        self.check_object_permissions(self.request, serializer.instance.tenant)
-        serializer.save()
-
-    def perform_destroy(self, instance):
-        self.check_object_permissions(self.request, instance.tenant)
-        instance.delete()
 
 class VariantGroupViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, IsTenantStaffForNestedViews]

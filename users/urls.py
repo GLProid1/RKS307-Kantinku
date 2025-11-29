@@ -6,13 +6,10 @@ from .views import (
     UserViewSet, LoginView, LogoutView, CheckAuthView, EditView, ChangePasswordView
 )
 app_name = 'users'
-
 router = DefaultRouter()
-router.register(r'all', UserViewSet, basename='user') # Akan menjadi api/users/all/
+router.register(r'', UserViewSet, basename='user') # Akan menjadi api/users/all/
 
 urlpatterns = [
-    path('', include(router.urls)),
-
     # URL Autentikasi
     path('login/', LoginView.as_view(), name='login'),
     path('logout/', LogoutView.as_view(), name='logout'),
@@ -22,4 +19,5 @@ urlpatterns = [
 
     # Ini adalah URL token-based, jika Anda masih mau pakai
     path('token/', obtain_auth_token, name='api_token_auth'),
+    path('', include(router.urls)),
 ]

@@ -199,8 +199,8 @@ class MidtransWehboohView(APIView):
         order.meta.setdefault('gateway_notification', []).append(payload)
         order.save(update_fields=['status', 'paid_at', 'meta'])
         
-        # --- PERBAIKAN: Nonaktifkan Celery untuk sementara ---
-        # transaction.on_commit(lambda: send_order_paid_notification.delay(order.id))
+        # Kirim notifikasi order yang sudah dibayar menggunakan celery
+        transaction.on_commit(lambda: send_order_paid_notification.delay(order.id))
         
         return Response({'detail': 'Order marked paid'}, status=200)
       
@@ -396,25 +396,26 @@ class ReportDashboardAPIView(APIView):
         one_week_ago = timezone.now() - timedelta(days=7)
         user = request.user 
         
-        user_tenant_ids = []
+        # Buat filter dasar untuk digunakan kembali
+        tenant_filter = models.Q()
         if not user.is_staff:
             user_tenant_ids = user.tenants.values_list('id', flat=True)
+            tenant_filter = models.Q(tenant_id__in=user_tenant_ids)
         
-        total_revenue = 0
-        total_orders = 0
-        avg_order_value = 0
-        active_customers = 0
-        
+        # Hanya admin yang bisa melihat statistik utama (total revenue, dll)
+        main_stats = {'total_revenue': 0, 'total_orders': 0, 'avg_order_value': 0, 'active_customers': 0 }
         if user.is_staff:
             total_revenue = Order.objects.filter(status='PAID').aggregate(total=Sum('total'))['total'] or 0
             total_orders = Order.objects.count()
             avg_order_value = Order.objects.filter(status='PAID').aggregate(avg=Avg('total'))['avg'] or 0
             active_customers = Order.objects.filter(created_at__gte=one_week_ago).values('customer').distinct().count()
+            main_stats.update({
+                'total_revenue': total_revenue, 'total_orders': total_orders, 
+                'avg_order_value': avg_order_value, 'active_customers': active_customers
+            })
 
         today = timezone.now().date()
-        today_orders_qs = Order.objects.filter(created_at__date=today)
-        if not user.is_staff:
-            today_orders_qs = today_orders_qs.filter(tenant_id__in=user_tenant_ids)
+        today_orders_qs = Order.objects.filter(tenant_filter, created_at__date=today)
         
         stats_today = {
             'total': today_orders_qs.count(),
@@ -423,25 +424,15 @@ class ReportDashboardAPIView(APIView):
             'completed': today_orders_qs.filter(status='COMPLETED').count()
         }
 
-        sales_by_hour_qs = Order.objects.filter(created_at__gte=timezone.now() - timedelta(days=1))
-        if not user.is_staff:
-            sales_by_hour_qs = sales_by_hour_qs.filter(tenant_id__in=user_tenant_ids)
-            
-        sales_by_hour = sales_by_hour_qs.annotate(hour=TruncHour('created_at')) \
+        sales_by_hour = Order.objects.filter(tenant_filter, created_at__gte=timezone.now() - timedelta(days=1)) \
+            .annotate(hour=TruncHour('created_at')) \
             .values('hour') \
             .annotate(orders=Count('id')) \
             .order_by('hour')
-        
-        formatted_sales_by_hour = [
-            {'hour': item['hour'].strftime('%H'), 'orders': item['orders']}
-            for item in sales_by_hour
-        ]
 
-        top_selling_qs = OrderItem.objects.all()
-        if not user.is_staff:
-            top_selling_qs = top_selling_qs.filter(order__tenant_id__in=user_tenant_ids)
-            
-        top_selling_products = top_selling_qs.values('menu_item__name') \
+        top_selling_products = OrderItem.objects.filter(order__tenant_id__in=user.tenants.values_list(
+            'id', flat=True) if not user.is_staff else Tenant.objects.values_list('id', flat=True)) \
+            .values('menu_item__name') \
             .annotate(total_sold=Sum('qty'), total_revenue=Sum('price')) \
             .order_by('-total_sold')[:5]
 
@@ -455,17 +446,17 @@ class ReportDashboardAPIView(APIView):
         ).order_by('-total_revenue_today')
 
         formatted_stand_performance = [
-            {'name': stand.name, 'orders': stand.total_orders_today, 'revenue': stand.total_revenue_today or 0}
+            {'name': stand.name, 'orders': stand.total_orders_today, 'revenue': float(stand.total_revenue_today or 0)}
             for stand in stand_performance
         ]
 
         data = {
-            'main_stats': { 
-                'total_revenue': total_revenue, 'total_orders': total_orders,
-                'avg_order_value': avg_order_value, 'active_customers': active_customers
-            },
+            'main_stats': main_stats,
             'stats_today': stats_today, 
-            'sales_by_hour': formatted_sales_by_hour,
+            'sales_by_hour': [
+                {'hour': item['hour'].strftime('%H'), 'orders': item['orders']}
+                for item in sales_by_hour
+            ],
             'top_selling_products': list(top_selling_products),
             'stand_performance': formatted_stand_performance,
         }

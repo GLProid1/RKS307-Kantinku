@@ -19,11 +19,11 @@ urlpatterns = [
     path('reports/summary/', ReportDashboardAPIView.as_view(), name='reports-summary'),
     
     # Order URLs
-    path('orders/', CreateOrderView.as_view(), name='create-order'),
-    path("orders/all/", OrderListView.as_view(), name='order-list'),
+    path('orders/', OrderListView.as_view(), name='order-list'), # GET untuk list
+    path('orders/create/', CreateOrderView.as_view(), name='create-order'), # POST untuk create
     path("orders/<uuid:order_uuid>/", OrderDetailView.as_view(), name='order-detail'),
     path("orders/<uuid:order_uuid>/cancel/", CancelOrderView.as_view(), name='cancel-order'),
-    path("orders/<uuid:order_uuid>/update-status/", UpdateOrderStatusView.as_view(), name='update-order-status'),
+    path("orders/<uuid:order_uuid>/status/", UpdateOrderStatusView.as_view(), name='update-order-status'),
     
     # Webhooks
     path("webhooks/payment/", MidtransWehboohView.as_view(), name='payment-webhooks'),

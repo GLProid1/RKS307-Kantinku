@@ -5,6 +5,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status, generics
 from orders.models import Order
+from orders.tasks import send_order_paid_notification
 from orders.serializers import OrderSerializer
 from .permissions import IsCashierUser
 from channels.layers import get_channel_layer
@@ -46,30 +47,21 @@ class CashConfirmView(APIView):
       if order.status.upper() != "AWAITING_PAYMENT":
         return Response({"detail": "Order sudah dibayar"}, status=status.HTTP_400_BAD_REQUEST)
       
+      confirmation_time = timezone.now()
       order.status = "PAID"
-      order.paid_at = timezone.now()
+      order.paid_at = confirmation_time
       meta = order.meta or {}
       meta.setdefault("payments", []).append({
         "method":"CASH",
         "confirmed_by": request.user.username if request.user.is_authenticated else "anonymous",
-        "confirmed_at": order.paid_at.isoformat()
+        "confirmed_at": confirmation_time.isoformat()
       })
       order.meta = meta
       order.save(update_fields=['status', 'paid_at', 'meta'])
-      
-      # --- PERBAIKAN: Nonaktifkan Celery untuk sementara ---
-      # transaction.on_commit(lambda: send_order_paid_notification.delay(order.id))
-      
-      # Kirim notifikasi real-time ke tenant
-      channel_layer = get_channel_layer()
-      tenant_group_name = f'tenant_{order.tenant.id}'
-      
-      notification_data = {
-        "type": 'new_order', # Tipe event untuk frontend
-        "order": OrderSerializer(order).data
-      }
-      async_to_sync(channel_layer.group_send)(tenant_group_name, {'type': 'order.notification', 'message': notification_data})
-      
+
+      # Panggil Celery task setelah transaksi berhasil lakukan
+      transaction.on_commit(lambda: send_order_paid_notification.delay(order.id))
+
     return Response({
       "detail": "Order dikonfirmasi lunas.",
       "order": OrderSerializer(order).data,

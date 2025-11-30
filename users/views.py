@@ -54,11 +54,9 @@ class UserViewSet(viewsets.ModelViewSet):
         }
         return Response(summary_data)
     
+
 @method_decorator(csrf_exempt, name='dispatch')
 class LoginView(APIView):
-  """
-  Menangani proses login pengguna. Mengembalikan data pengguna dan token autentikasi.
-  """
   permission_classes = [AllowAny]
   
   def post(self, request, *args, **kwargs):
@@ -68,16 +66,27 @@ class LoginView(APIView):
     user = authenticate(request, username=username, password=password)
     
     if user:
-      # Untuk autentikasi token
-      # Ambil role dari grup pertama, atau 'customer' jika tidak ada grup
-      role = user.groups.first().name.lower() if user.groups.exists() else 'customer'
+
+      login(request, user)
+      # --- LOGIKA BARU PENENTUAN ROLE ---
+      role = 'customer' # Default role
+
+      # 1. Prioritas: Jika Superuser atau Staff, otomatis jadi 'admin'
+      if user.is_superuser or user.is_staff:
+          role = 'admin'
+      # 2. Jika bukan superuser, cek grupnya (Seller/Cashier)
+      elif user.groups.exists():
+          role = user.groups.first().name.lower()
+      
+      # --- AKHIR PERUBAHAN ---
+
       token, created = Token.objects.get_or_create(user=user)
       return Response({
         "token": token.key,
         "user": {
                 **UserSerializer(user).data,
-                "role" : role,
-                "initial_dashboard": f"/{role}-dashboard" # URL untuk frontend
+                "role" : role, # Backend sekarang akan mengirim 'admin'
+                "initial_dashboard": f"/{role}-dashboard"
                 },
         "message": f"Login Berhasil. Hi, {user.username}!"
       }, status=status.HTTP_200_OK)

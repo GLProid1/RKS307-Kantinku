@@ -1,5 +1,6 @@
 from celery import shared_task
 from .models import Order
+from django.conf import settings
 from .serializers import OrderSerializer
 from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
@@ -52,8 +53,12 @@ def send_cash_order_invoice(order_id):
     'pin': order.cashier_pin,
     'tenant': order.tenant.name,
   }
-  html_message = render_to_string('emails/cash_invoice.html', context)
-  plain_message = f"Terima kasih telah memesan. Tunjukkan PIN ini: {order.cashier_pin} ke kasir untuk pembayaran."
-  
-  send_mail(subject, plain_message, 'riconatanael2212@gmail.com', [order.customer.email], html_message=html_message)
-  return f"Invoice sent to {order.customer.email} for order {order.pk}"
+  try:
+    html_message = render_to_string('emails/cash_invoice.html', context)
+    plain_message = f"Terima kasih telah memesan. Tunjukkan PIN ini: {order.cashier_pin} ke kasir untuk pembayaran."
+    from_email = settings.EMAIL_HOST_USER
+    send_mail(subject, plain_message, from_email, [order.customer.email], html_message=html_message, fail_silently=False)
+    return f"Invoice sent to {order.customer.email} for order {order.pk}"
+  except Exception as e:
+    print(f"Error, Gagal mengirim email: {e}")
+    return f"Error mengirim email: {e}"

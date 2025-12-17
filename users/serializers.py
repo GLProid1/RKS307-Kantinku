@@ -2,7 +2,9 @@ from rest_framework import serializers
 from django.contrib.auth.models import User, Group
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
-from tenants.models import Tenant
+from django.apps import apps
+from django.db import transaction
+# from tenants.models import Tenant
 import string
 import random
 
@@ -21,28 +23,31 @@ class UserCreateSerializer(serializers.ModelSerializer):
         fields = ['username', 'email', 'password', 'role']
 
     def create(self, validated_data):
-        role_name = validated_data.pop('role')
-        user = User.objects.create_user(**validated_data)
-        group, _ = Group.objects.get_or_create(name=role_name)
-        user.groups.add(group)
-        if role_name == 'Admin':
-            user.is_staff = True
-            user.save(update_fields=['is_staff'])
+        # Gunakan transaction atomic agar jika pembuatan stand gagal, User juga batal dibuat
+        with transaction.atomic():
+            role_name = validated_data.pop('role')
+            user = User.objects.create_user(**validated_data)
+            group, _ = Group.objects.get_or_create(name=role_name)
+            user.groups.add(group)
+            if role_name == 'Admin':
+                user.is_staff = True
+                user.save(update_fields=['is_staff'])
         
-        # --- TAMBAHKAN LOGIKA INI ---
-        if role_name == 'Seller':
-            # 1. Buat nama stand random
-            random_suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
-            stand_name = f"Stand {user.username}-{random_suffix}"
+            # --- TAMBAHKAN LOGIKA INI ---
+            if role_name == 'Seller':
+                # Ambil models Tenant dari apps untuk menghindari circular import
+                Tenant = apps.get_model('tenants', 'Tenant')
+                
+                # 1. Buat nama stand random
+                random_suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+                stand_name = f"Stand {user.username}-{random_suffix}"
             
-            # 2. Buat Stand baru
-            new_stand = Tenant.objects.create(name=stand_name, active=True)
+                # 2. Buat Stand baru
+                new_stand = Tenant.objects.create(name=stand_name, active=True)
             
-            # 3. Hubungkan user ini ke stand tersebut
-            new_stand.staff.add(user)
-        # --- AKHIR TAMBAHAN ---
-            
-        return user
+                # 3. Hubungkan user ini ke stand tersebut
+                new_stand.staff.add(user)
+            return user
     
 class UpdateUserSerializer(serializers.ModelSerializer):
     class Meta:

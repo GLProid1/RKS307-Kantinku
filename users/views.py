@@ -54,11 +54,9 @@ class UserViewSet(viewsets.ModelViewSet):
         }
         return Response(summary_data)
     
+
 @method_decorator(csrf_exempt, name='dispatch')
 class LoginView(APIView):
-  """
-  Menangani proses login pengguna. Mengembalikan data pengguna dan token autentikasi.
-  """
   permission_classes = [AllowAny]
   
   def post(self, request, *args, **kwargs):
@@ -68,23 +66,41 @@ class LoginView(APIView):
     user = authenticate(request, username=username, password=password)
     
     if user:
-      # Untuk autentikasi token
-      # Ambil role dari grup pertama, atau 'customer' jika tidak ada grup
-      role = user.groups.first().name.lower() if user.groups.exists() else 'customer'
-      token, created = Token.objects.get_or_create(user=user)
-      return Response({
-        "token": token.key,
-        "user": {
+        login(request, user)
+        
+        # --- PERBAIKAN LOGIKA ROLE ---
+        role = 'customer' # Default
+
+        # 1. Cek Grup DULUAN (Lebih spesifik)
+        if user.groups.filter(name__iexact='Cashier').exists():
+            role = 'cashier'
+        elif user.groups.filter(name__iexact='Seller').exists():
+            role = 'seller'
+        elif user.groups.filter(name__iexact='Admin').exists():
+            role = 'admin'
+        # 2. Baru cek is_superuser/is_staff sebagai fallback terakhir
+        elif user.is_superuser or user.is_staff:
+            role = 'admin'
+            
+        # --- PERBAIKAN INITIAL DASHBOARD (Sesuaikan dengan App.jsx) ---
+        # App.jsx kamu hanya punya rute: '/' (Dashboard), '/pos', '/antrian', dll.
+        initial_dashboard = "/"
+        
+        if role == 'cashier':
+            initial_dashboard = "/pos"
+        elif role == 'seller' or role == 'admin':
+            initial_dashboard = "/" 
+
+        token, created = Token.objects.get_or_create(user=user)
+        return Response({
+            "token": token.key,
+            "user": {
                 **UserSerializer(user).data,
-                "role" : role,
-                "initial_dashboard": f"/{role}-dashboard" # URL untuk frontend
-                },
-        "message": f"Login Berhasil. Hi, {user.username}!"
-      }, status=status.HTTP_200_OK)
-    else:
-      return Response({
-        "detail": "Username atau Password yang anda masukkan salah. Silahkan coba lagi."
-      }, status=status.HTTP_401_UNAUTHORIZED)
+                "role": role,
+                "initial_dashboard": initial_dashboard 
+            },
+            "message": f"Login Berhasil. Hi, {user.username}!"
+        }, status=status.HTTP_200_OK)
 
 class LogoutView(APIView):
   """

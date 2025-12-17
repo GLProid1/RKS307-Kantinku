@@ -29,13 +29,17 @@ urlpatterns = [
     path('api/', include('orders.urls')), # orders.urls tidak perlu diubah
     path('api/tenants/', include('tenants.urls')),  # Pindahkan tenants ke dalam /api/
     path('api/cashier/', include(('cashier.urls', 'cashier'))),  # Tambahkan ini untuk meng-include URL dari aplikasi cashier
-    path('api/users/', include(('users.urls', 'users'))),  # Tambahkan ini untuk meng-include URL dari aplikasi users')
+    path('api/users/', include(('users.urls', 'users'))), # Tambahkan ini untuk meng-include URL dari aplikasi users')
+    path('api/reports/', include('reports.urls')),  
     
+
+
     # URL Dokumentasi API
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
     # Tampilan UI dokumentasi
     path('api/docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
     path('api/redoc/', SpectacularRedocView.as_view(url_name='schema'), name='redoc')
+    
 ]
 
 if settings.DEBUG:

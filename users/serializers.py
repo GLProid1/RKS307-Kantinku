@@ -9,10 +9,22 @@ import string
 import random
 
 class UserSerializer(serializers.ModelSerializer):
-    role = serializers.CharField(source='groups.first.name', read_only=True)
+    # Ubah ini dari CharField biasa menjadi SerializerMethodField
+    # tujuannya agar kita bisa memanipulasi teksnya (jadi lowercase)
+    role = serializers.SerializerMethodField()
+
     class Meta:
         model = User
         fields = ['id', 'username', 'email', 'role', 'first_name', 'last_name']
+
+    def get_role(self, obj):
+        # Ambil group pertama user
+        group = obj.groups.first()
+        if group:
+            # Kembalikan nama group dalam HURUF KECIL (lower)
+            # Contoh: "Cashier" menjadi "cashier"
+            return group.name.lower()
+        return None
 
 class UserCreateSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True)

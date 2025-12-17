@@ -7,7 +7,7 @@ from .views import (
     # Orders Views
     CreateOrderView, MidtransWehboohView, 
     OrderDetailView, UpdateOrderStatusView, CancelOrderView, OrderListView,
-    TableQRCodeView, TakeawayQRCodeView,
+    TableQRCodeView, TakeawayQRCodeView,PopularMenusView,
     
     # ViewSets
     ReportDashboardAPIView,
@@ -17,6 +17,10 @@ from .views import (
 urlpatterns = [
     # Report
     path('reports/summary/', ReportDashboardAPIView.as_view(), name='reports-summary'),
+    
+    # Popular Menus (TAMBAHKAN INI)
+    # Ini akan membuat URL: /api/orders/popular-menus/
+    path('orders/popular-menus/', PopularMenusView.as_view(), name='popular-menus'),
     
     # Order URLs
     path('orders/', OrderListView.as_view(), name='order-list'), # GET untuk list

@@ -157,7 +157,7 @@ class CreateOrderView(APIView):
     # Perubahan: Kirim invoice ke email jika metode pembayaran CASH
     elif order.payment_method== 'CASH':
         # Kirim email sebagai backgroun task
-        transaction.on_commit(lambda: send_cash_order_invoice.delay(order.id))
+        transaction.on_commit(lambda: send_cash_order_invoice.delay(order.pk))
         
     if not request.user.is_authenticated:
         guest_uuids = request.session.get('guest_order_uuids', [])
@@ -200,7 +200,7 @@ class MidtransWehboohView(APIView):
         order.save(update_fields=['status', 'paid_at', 'meta'])
         
         # Kirim notifikasi order yang sudah dibayar menggunakan celery
-        transaction.on_commit(lambda: send_order_paid_notification.delay(order.id))
+        transaction.on_commit(lambda: send_order_paid_notification.delay(order.pk))
         
         return Response({'detail': 'Order marked paid'}, status=200)
       
@@ -233,7 +233,7 @@ class CancelOrderView(APIView):
   
   def post(self, request, order_uuid):
     order = get_object_or_404(Order, uuid=order_uuid)
-    self.check_object_permission(request, order)
+    self.check_object_permissions(request, order)
     
     if order.status.upper() == 'PAID':
       return Response({"detail": "Order sudah dibayar, tidak bisa dibatalkan"}, status=status.HTTP_400_BAD_REQUEST)
@@ -264,7 +264,7 @@ class UpdateOrderStatusView(APIView):
     def patch(self, request, order_uuid):
         order = get_object_or_404(Order, uuid=order_uuid)
         
-        self.check_object_permission(request, order)
+        self.check_object_permissions(request, order)
         
         new_status = request.data.get('status')
         if not new_status:
@@ -375,7 +375,7 @@ class TakeawayQRCodeView(APIView):
 
     def get(self, request, tenant_id):
         tenant = get_object_or_404(Tenant, pk=tenant_id)
-        frontend_url = request.build_absolute_uri(reverse('create-order')) + f"?tenant={tenant.id}&order_type=TAKEAWAY"
+        frontend_url = request.build_absolute_uri(reverse('create-order')) + f"?tenant={tenant.pk}&order_type=TAKEAWAY"
         
         qr = qrcode.QRCode(version=1, box_size=10, border=4)
         qr.add_data(frontend_url)

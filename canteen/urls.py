@@ -26,7 +26,7 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     
     # Semua endpoint API di bawah prefix 'api/
-    path('api/', include('orders.urls')), # orders.urls tidak perlu diubah
+    path('api/orders/', include('orders.urls')),
     path('api/tenants/', include('tenants.urls')),  # Pindahkan tenants ke dalam /api/
     path('api/cashier/', include(('cashier.urls', 'cashier'))),  # Tambahkan ini untuk meng-include URL dari aplikasi cashier
     path('api/users/', include(('users.urls', 'users'))), # Tambahkan ini untuk meng-include URL dari aplikasi users')

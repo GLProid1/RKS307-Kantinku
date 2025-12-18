@@ -57,50 +57,51 @@ class UserViewSet(viewsets.ModelViewSet):
 
 @method_decorator(csrf_exempt, name='dispatch')
 class LoginView(APIView):
-  permission_classes = [AllowAny]
+    permission_classes = [AllowAny]
   
-  def post(self, request, *args, **kwargs):
-    username = request.data.get('username')
-    password = request.data.get('password')
-    
-    user = authenticate(request, username=username, password=password)
-    
-    if user:
-        login(request, user)
+    def post(self, request, *args, **kwargs):
+        username = request.data.get('username')
+        password = request.data.get('password')
         
-        # --- PERBAIKAN LOGIKA ROLE ---
-        role = 'customer' # Default
+        user = authenticate(request, username=username, password=password)
+        
+        if user:
+            login(request, user)
+            role = 'customer' # Default
 
-        # 1. Cek Grup DULUAN (Lebih spesifik)
-        if user.groups.filter(name__iexact='Cashier').exists():
-            role = 'cashier'
-        elif user.groups.filter(name__iexact='Seller').exists():
-            role = 'seller'
-        elif user.groups.filter(name__iexact='Admin').exists():
-            role = 'admin'
-        # 2. Baru cek is_superuser/is_staff sebagai fallback terakhir
-        elif user.is_superuser or user.is_staff:
-            role = 'admin'
+            # Cek Grup
+            if user.groups.filter(name__iexact='Cashier').exists():
+                role = 'cashier'
+            elif user.groups.filter(name__iexact='Seller').exists():
+                role = 'seller'
+            elif user.groups.filter(name__iexact='Admin').exists():
+                role = 'admin'
+            elif user.is_superuser or user.is_staff:
+                role = 'admin'
+
+            token, _ = Token.objects.get_or_create(user=user)
             
-        # --- PERBAIKAN INITIAL DASHBOARD (Sesuaikan dengan App.jsx) ---
-        # App.jsx kamu hanya punya rute: '/' (Dashboard), '/pos', '/antrian', dll.
-        initial_dashboard = "/"
-        
-        if role == 'cashier':
-            initial_dashboard = "/pos"
-        elif role == 'seller' or role == 'admin':
-            initial_dashboard = "/" 
+            # LOGIKA PENGALIHAN (REDIRECT)
+            # Kasir & Admin tetap di rute internal aplikasi utama
+            if role == 'cashier':
+                initial_dashboard = "/pos"
+            elif role == 'admin':
+                initial_dashboard = "/"
+            # Seller diarahkan ke port/domain aplikasi Tenant (contoh: port 5174)
+            elif role == 'seller':
+                initial_dashboard = f"http://localhost:5174/external-login?token={token.key}"
+            else:
+                initial_dashboard = "/"
 
-        token, created = Token.objects.get_or_create(user=user)
-        return Response({
-            "token": token.key,
-            "user": {
-                **UserSerializer(user).data,
-                "role": role,
-                "initial_dashboard": initial_dashboard 
-            },
-            "message": f"Login Berhasil. Hi, {user.username}!"
-        }, status=status.HTTP_200_OK)
+            return Response({
+                "token": token.key,
+                "user": {
+                    **UserSerializer(user).data,
+                    "role": role,
+                    "initial_dashboard": initial_dashboard 
+                },
+                "message": f"Login Berhasil. Hi, {user.username}!"
+            }, status=status.HTTP_200_OK)
 
 class LogoutView(APIView):
   """

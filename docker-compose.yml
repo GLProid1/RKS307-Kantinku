@@ -1,0 +1,27 @@
+version: "3.8"
+
+services:
+  # --- Service 1: PostgreSQL (Database Utama) ---
+  db:
+    image: postgres:16
+    container_name: kantinku-db
+    restart: always
+    environment:
+      POSTGRES_USER: rico
+      POSTGRES_PASSWORD: kantinku
+      POSTGRES_DB: kantinku
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  # --- Service 2: Redis (Untuk Celery Broker & Cache) ---
+  redis:
+    image: redis:alpine
+    container_name: redis-kantinku
+    restart: always
+    ports:
+      - "6379:6379"
+
+volumes:
+  postgres_data:

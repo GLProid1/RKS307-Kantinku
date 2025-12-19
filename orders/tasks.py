@@ -6,6 +6,9 @@ from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
 from django.core.mail import send_mail
 from django.template.loader import render_to_string
+from django.core.validators import validate_email
+from django.core.exceptions import ValidationError
+import socket
 
 @shared_task
 def send_order_paid_notification(order_id):
@@ -47,6 +50,17 @@ def send_cash_order_invoice(order_id):
   if not (order.customer and order.customer.email and order.cashier_pin):
     return "No customer email or PIN found"
   
+  # Validasi apakah email valid dan domainnya eksis
+  email_address = order.customer.email
+  try:
+    # 1. Validasi format syntax email
+    validate_email(email_address)
+    # 2. Validasi domain (DNS check sederhana)
+    domain = email_address.split('@')[1]
+    socket.gethostbyname(domain)
+  except (ValidationError, socket.error):
+    return f"Invalid email or domain: {email_address}"
+
   subject = f"Instruksi Pembayaran Pesanana Anda #{order.references_code}"
   context = {
     'order': order,

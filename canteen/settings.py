@@ -70,6 +70,16 @@ REST_FRAMEWORK = {
         'rest_framework.renderers.JSONRenderer',
         'rest_framework.renderers.BrowsableAPIRenderer',
     ],
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle'
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '10/day',      # Batas untuk user tanpa login (secara global)
+        'user': '1000/day',    # Batas untuk user yang sudah login
+        'burst': '5/minute',   # Batas cepat untuk aksi sensitif
+        'sustained': '100/day',
+    },
 }
 
 CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/0")

@@ -3,6 +3,7 @@ from django.utils import timezone
 from django.db import transaction
 from rest_framework.views import APIView
 from rest_framework.response import Response
+from rest_framework.throttling import UserRateThrottle
 from rest_framework import status, generics
 from orders.models import Order
 from orders.tasks import send_order_paid_notification
@@ -66,12 +67,16 @@ class CashConfirmView(APIView):
       "detail": "Order dikonfirmasi lunas.",
       "order": OrderSerializer(order).data,
     }, status=status.HTTP_200_OK)
-    
+
+class VerifyPinThrottle(UserRateThrottle):
+    scope = 'burst' # Gunakan limit misal 5 kali per menit
+
 class VerifyOrderByPinView(APIView):
     """
     Endpoint untuk kasir memverifikasi order berdasarkan PIN dari pelanggan.
     """
     permission_classes = [IsCashierUser]
+    throttle_classes = [VerifyPinThrottle]
     def post(self, request):
       pin = request.data.get('pin')
       if not pin:

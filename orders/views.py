@@ -16,6 +16,7 @@ from rest_framework.response import Response
 from rest_framework import status, permissions, generics, viewsets, serializers
 from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny, IsAuthenticated, OR
+from rest_framework.throttling import AnonRateThrottle
 
 from .models import Order, OrderItem, Customer, MenuItem, Tenant, Table, generate_order_pin
 from .serializers import (
@@ -77,9 +78,13 @@ class PopularMenusView(generics.ListAPIView):
         sorted_items = [items_map[item_id] for item_id in top_menu_item_ids if item_id in items_map]
         
         return sorted_items
-    
+
+class CreateOrderBurstThrottle(AnonRateThrottle):
+    scope = 'burst'
+
 class CreateOrderView(APIView):
   permission_classes = [permissions.AllowAny]
+  throttle_classes = [CreateOrderBurstThrottle]
 
   def post(self, request):
     serializer = OrderCreateSerializer(data=request.data)

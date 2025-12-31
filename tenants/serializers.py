@@ -25,18 +25,31 @@ class VariantGroupSerializer(serializers.ModelSerializer):
 
 class MenuItemSerializer(serializers.ModelSerializer):
     variant_groups = VariantGroupSerializer(many=True, read_only=True)
+    
+    # 1. Field 'tenant' asli (tetap ada untuk kompatibilitas)
     tenant = serializers.PrimaryKeyRelatedField(read_only=True)
     
-    # --- TAMBAHKAN BARIS INI ---
+    # 2. TAMBAHAN PENTING: Alias 'tenant_id' agar Frontend lebih aman membacanya
+    tenant_id = serializers.PrimaryKeyRelatedField(source='tenant', read_only=True)
+    
+    # 3. Helper URL Gambar
     imageUrl = serializers.URLField(source='image.url', read_only=True)
-    # --- AKHIR TAMBAHAN ---
 
     class Meta:
         model = MenuItem
         fields = [
-            'id', 'tenant', 'name', 'price', 'available', 'description', 
-            'image', 'imageUrl', # <-- Tambahkan 'imageUrl' di sini
-            'category', 'stock', 'variant_groups'
+            'id', 
+            'tenant',      # Output: 1
+            'tenant_id',   # Output: 1 (Sama, tapi nama field lebih jelas)
+            'name', 
+            'price', 
+            'available', 
+            'description', 
+            'image', 
+            'imageUrl', 
+            'category', 
+            'stock', 
+            'variant_groups'
         ]
 class StandSerializer(serializers.ModelSerializer):
     # Field baru untuk mencocokkan komponen frontend StandCard.jsx

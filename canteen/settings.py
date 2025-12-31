@@ -26,7 +26,7 @@ load_dotenv(os.path.join(BASE_DIR, ".env"))
 SECRET_KEY = os.getenv("SECRET_KEY")
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv('DEBUG', 'False') == 'True'
-ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
+ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1,192.168.1.10').split(',')
 
 
 # Application definition
@@ -70,16 +70,16 @@ REST_FRAMEWORK = {
         'rest_framework.renderers.JSONRenderer',
         'rest_framework.renderers.BrowsableAPIRenderer',
     ],
-    #'DEFAULT_THROTTLE_CLASSES': [
-    #   'rest_framework.throttling.AnonRateThrottle',
-    #    'rest_framework.throttling.UserRateThrottle'
-    #],
-    #'DEFAULT_THROTTLE_RATES': {
-    #    'anon': '10/day',      # Batas untuk user tanpa login (secara global)
-    #    'user': '1000/day',    # Batas untuk user yang sudah login
-    #    'burst': '5/minute',   # Batas cepat untuk aksi sensitif
-    #    'sustained': '100/day',
-    #},
+    'DEFAULT_THROTTLE_CLASSES': [
+       'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle'
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '10/day',      # Batas untuk user tanpa login (secara global)
+        'user': '1000/day',    # Batas untuk user yang sudah login
+        'burst': '5/minute',   # Batas cepat untuk aksi sensitif
+        'sustained': '100/day',
+    },
 }
 
 CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/0")

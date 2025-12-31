@@ -81,6 +81,7 @@ class PopularMenusView(generics.ListAPIView):
 
 class CreateOrderBurstThrottle(AnonRateThrottle):
     scope = 'burst'
+    rate = '5/minute'
 
 class CreateOrderView(APIView):
   permission_classes = [permissions.AllowAny]

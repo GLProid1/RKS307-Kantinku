@@ -22,34 +22,41 @@ class IsOrderTenantStaff(permissions.BasePermission):
         return False
 
 class IsGuestOrderOwner(permissions.BasePermission):
-  message = "Anda tidak memiliki izin untuk mengakses order ini."
+    message = "Anda tidak memiliki izin untuk mengakses order ini."
 
-  def has_permission(self, request, view):
-    return True 
+    def has_permission(self, request, view):
+        return True 
 
-  def has_object_permission(self, request, view, obj):
-    # 1. Jika User Login
-    if request.user.is_authenticated:
-      # --- PERBAIKAN DI SINI ---
-      
-      # A. Izinkan jika user adalah Customer yang membuat order (Cek kesamaan Email)
-      if obj.customer and obj.customer.email == request.user.email:
-          return True
+    def has_object_permission(self, request, view, obj):
+        # 1. AMBIL TOKEN (Prioritas Utama)
+        # Pada metode GET, data seringkali ada di query_params, bukan .GET atau .data
+        token = (
+            request.query_params.get('token') or 
+            request.data.get('token') or 
+            request.GET.get('token')
+        )
+        
+        # Jika ada token, verifikasi langsung (baik login maupun tidak)
+        if token:
+            expected_token = self.generate_order_token(str(obj.uuid))
+            if hmac.compare_digest(token, expected_token):
+                return True
+
+        # 2. Jika User Login (Tanpa membawa token)
+        if request.user.is_authenticated:
+            # A. Cek Customer pemilik order (berdasarkan email)
+            if obj.customer and obj.customer.email == request.user.email:
+                return True
+                
+            # B. Cek Staff Tenant pemilik order
+            if hasattr(request.user, 'tenants') and obj.tenant in request.user.tenants.all():
+                return True
+                
+            # C. Cek Admin Django
+            if request.user.is_staff:
+                return True
           
-      # B. Izinkan jika user adalah Staff/Pemilik Stand
-      if hasattr(request.user, 'tenants') and obj.tenant in request.user.tenants.all():
-          return True
-          
-      # Jika bukan keduanya, tolak.
-      return False
-  
-    # 2. Jika Guest (User tidak login), cek Token di URL
-    guest_token = request.GET.get('token') or request.data.get('token')
-    if not guest_token:
-      return False
-    
-    expected_token = self.generate_order_token(str(obj.uuid))
-    return hmac.compare_digest(guest_token, expected_token)
+        return False
 
   def generate_order_token(self, order_uuid):
       return hmac.new(

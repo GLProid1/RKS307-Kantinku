@@ -70,16 +70,16 @@ REST_FRAMEWORK = {
         'rest_framework.renderers.JSONRenderer',
         'rest_framework.renderers.BrowsableAPIRenderer',
     ],
-    'DEFAULT_THROTTLE_CLASSES': [
-        'rest_framework.throttling.AnonRateThrottle',
-        'rest_framework.throttling.UserRateThrottle'
-    ],
-    'DEFAULT_THROTTLE_RATES': {
-        'anon': '10/day',      # Batas untuk user tanpa login (secara global)
-        'user': '1000/day',    # Batas untuk user yang sudah login
-        'burst': '5/minute',   # Batas cepat untuk aksi sensitif
-        'sustained': '100/day',
-    },
+    #'DEFAULT_THROTTLE_CLASSES': [
+    #   'rest_framework.throttling.AnonRateThrottle',
+    #    'rest_framework.throttling.UserRateThrottle'
+    #],
+    #'DEFAULT_THROTTLE_RATES': {
+    #    'anon': '10/day',      # Batas untuk user tanpa login (secara global)
+    #    'user': '1000/day',    # Batas untuk user yang sudah login
+    #    'burst': '5/minute',   # Batas cepat untuk aksi sensitif
+    #    'sustained': '100/day',
+    #},
 }
 
 CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/0")
@@ -136,7 +136,10 @@ DATABASES = {
         'USER': os.getenv('DB_USER'),
         'PASSWORD': os.getenv('DB_PASSWORD'),
         'HOST': os.getenv('DB_HOST'),
-        'PORT': os.getenv('DB_PORT')
+        'PORT': os.getenv('DB_PORT'),
+        'OPTIONS': {
+          'sslmode': 'require',
+        }
     }
 }
 
@@ -181,14 +184,21 @@ USE_I18N = True
 USE_TZ = True
 
 STATIC_URL = 'static/'
-STATICFILES_DIRS = [
-    BASE_DIR / 'static',
-]
+STATIC_ROOT = BASE_DIR / 'static'
+#STATICFILES_DIRS = [
+#    BASE_DIR / 'static',
+#]
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 CORS_ALLOWED_ORIGINS = os.getenv('CORS_ALLOWED_ORIGINS', '').split(',')
 # Pastikan ini tetap ada
 CORS_ALLOW_CREDENTIALS = True
+
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
+# Penting agar Login & POST request tidak 403 Forbidden saat pakai Domain
+CSRF_TRUSTED_ORIGINS = os.getenv('CSRF_TRUSTED_ORIGINS', 'https://kantinku.com').split(',')
+
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'

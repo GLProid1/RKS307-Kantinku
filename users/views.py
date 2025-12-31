@@ -102,6 +102,10 @@ class LoginView(APIView):
                 },
                 "message": f"Login Berhasil. Hi, {user.username}!"
             }, status=status.HTTP_200_OK)
+        return Response({
+            "detail": "Username atau password salah."
+        }, status=status.HTTP_401_UNAUTHORIZED)
+
 
 class LogoutView(APIView):
   """

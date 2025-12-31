@@ -195,10 +195,7 @@ class CreateOrderView(APIView):
     payment_info = None
     if order.payment_method == 'TRANSFER':
       payment_info = initiate_payment_for_order(order)
-    
-    # Perubahan: Kirim invoice ke email jika metode pembayaran CASH
     elif order.payment_method== 'CASH':
-        # Kirim email sebagai backgroun task
         transaction.on_commit(lambda: send_cash_order_invoice.delay(order.pk))
         
     if not request.user.is_authenticated:
@@ -207,9 +204,19 @@ class CreateOrderView(APIView):
             guest_uuids.append(str(order.uuid))
             request.session['guest_order_uuids'] = guest_uuids
     
+    # --- TAMBAHAN KODE PENTING (START) ---
+    # Generate Token HMAC agar Frontend bisa mengakses order ini
+    guest_token = hmac.new(
+        settings.SECRET_KEY.encode(),
+        str(order.uuid).encode(),
+        hashlib.sha256
+    ).hexdigest()
+    # --- TAMBAHAN KODE PENTING (END) ---
+    
     resp = {
       'order': OrderSerializer(order, context={'request': request}).data,
-      'payment': payment_info
+      'payment': payment_info,
+      'token': guest_token  # <--- Pastikan token dikirim ke frontend
     }
     return Response(resp, status=status.HTTP_201_CREATED)
   

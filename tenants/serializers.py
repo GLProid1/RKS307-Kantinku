@@ -31,6 +31,9 @@ class MenuItemSerializer(serializers.ModelSerializer):
     
     # 2. TAMBAHAN PENTING: Alias 'tenant_id' agar Frontend lebih aman membacanya
     tenant_id = serializers.PrimaryKeyRelatedField(source='tenant', read_only=True)
+
+    # 2. Nama Stand untuk ditampilkan di Card
+    tenant_name = serializers.CharField(source='tenant.name', read_only=True)
     
     # 3. Helper URL Gambar
     imageUrl = serializers.URLField(source='image.url', read_only=True)
@@ -40,7 +43,8 @@ class MenuItemSerializer(serializers.ModelSerializer):
         fields = [
             'id', 
             'tenant',      # Output: 1
-            'tenant_id',   # Output: 1 (Sama, tapi nama field lebih jelas)
+            'tenant_id',
+            'tenant_name',# Output: 1 (Sama, tapi nama field lebih jelas)
             'name', 
             'price', 
             'available', 

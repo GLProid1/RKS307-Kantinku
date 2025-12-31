@@ -266,19 +266,23 @@ class MidtransWehboohView(APIView):
       order.save(update_fields=['meta'])
       return Response({"detail": "Ok"}, status=200)
 
-class OrderDetailView(APIView):
-  permission_classes = [IsOrderTenantStaff | IsGuestOrderOwner]
-  
-  def get(self, request, order_uuid):
-    order = get_object_or_404(Order, uuid=order_uuid)
-    self.check_object_permissions(request, order)
-      
-    if order.expired_at and timezone.now() > order.expired_at and order.status != 'EXPIRED':
-      order.status = 'EXPIRED'
-      order.save(update_fields=['status'])
-      
-    serializer = OrderSerializer(order, context={'request': request})
-    return Response(serializer.data, status=status.HTTP_200_OK)
+class OrderDetailView(generics.RetrieveAPIView):
+    # Menggunakan select_related agar data customer tersedia saat pengecekan permission
+    queryset = Order.objects.all().select_related('customer', 'tenant')
+    serializer_class = OrderSerializer
+    permission_classes = [IsOrderTenantStaff | IsGuestOrderOwner]
+    lookup_field = 'uuid'
+    lookup_url_kwarg = 'order_uuid'
+
+    def get_object(self):
+        obj = super().get_object()
+        
+        # Logika Update Status Expired tetap bisa ditaruh di sini
+        if obj.expired_at and timezone.now() > obj.expired_at and obj.status != 'EXPIRED':
+            obj.status = 'EXPIRED'
+            obj.save(update_fields=['status'])
+            
+        return obj
   
 class CancelOrderView(APIView):
   permission_classes = [IsOrderTenantStaff | IsGuestOrderOwner]

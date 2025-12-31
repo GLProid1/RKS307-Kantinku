@@ -30,19 +30,20 @@ class IsGuestOrderOwner(permissions.BasePermission):
   def has_object_permission(self, request, view, obj):
     # 1. Jika User Login
     if request.user.is_authenticated:
-      # PERBAIKAN:
-      # Izinkan jika User adalah Customer pemilik order (Cek Email)
+      # --- PERBAIKAN DI SINI ---
+      
+      # A. Izinkan jika user adalah Customer yang membuat order (Cek kesamaan Email)
       if obj.customer and obj.customer.email == request.user.email:
           return True
           
-      # Izinkan juga jika User adalah pemilik Stand (Tenant)
-      # (Gunakan hasattr untuk mencegah error jika user tidak punya atribut tenants)
+      # B. Izinkan jika user adalah Staff/Pemilik Stand
       if hasattr(request.user, 'tenants') and obj.tenant in request.user.tenants.all():
           return True
           
+      # Jika bukan keduanya, tolak.
       return False
   
-    # 2. Jika Guest (Pakai Token)
+    # 2. Jika Guest (User tidak login), cek Token di URL
     guest_token = request.GET.get('token') or request.data.get('token')
     if not guest_token:
       return False
@@ -51,7 +52,6 @@ class IsGuestOrderOwner(permissions.BasePermission):
     return hmac.compare_digest(guest_token, expected_token)
 
   def generate_order_token(self, order_uuid):
-      """Generate secure token untuk guest order"""
       return hmac.new(
           settings.SECRET_KEY.encode(),
           order_uuid.encode(),

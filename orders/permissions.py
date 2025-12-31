@@ -28,10 +28,21 @@ class IsGuestOrderOwner(permissions.BasePermission):
     return True 
 
   def has_object_permission(self, request, view, obj):
+    # 1. Jika User Login
     if request.user.is_authenticated:
-      return obj.tenant in request.user.tenants.all()
+      # PERBAIKAN:
+      # Izinkan jika User adalah Customer pemilik order (Cek Email)
+      if obj.customer and obj.customer.email == request.user.email:
+          return True
+          
+      # Izinkan juga jika User adalah pemilik Stand (Tenant)
+      # (Gunakan hasattr untuk mencegah error jika user tidak punya atribut tenants)
+      if hasattr(request.user, 'tenants') and obj.tenant in request.user.tenants.all():
+          return True
+          
+      return False
   
-    # Verifikasi dengan signed token
+    # 2. Jika Guest (Pakai Token)
     guest_token = request.GET.get('token') or request.data.get('token')
     if not guest_token:
       return False

@@ -2,7 +2,6 @@ import hmac
 import hashlib
 from django.conf import settings
 from rest_framework import permissions
-from .models import Order
 
 class IsOrderTenantStaff(permissions.BasePermission):
     """
@@ -12,10 +11,13 @@ class IsOrderTenantStaff(permissions.BasePermission):
     message = "Anda tidak memiliki izin untuk mengakses order dari tenant ini."
 
     def has_object_permission(self, request, view, obj):
-        # --- PERBAIKAN: Cek 'is_staff' (Superuser) ---
+        # 1. Cek 'is_staff' (Superuser) atau grup Admin
         if request.user.is_staff or request.user.groups.filter(name='Admin').exists():
             return True
         
+        # 2. Cek apakah user adalah staff di tenant tersebut
+        # Import lokal untuk menghindari circular import jika perlu
+        from .models import Order
         if isinstance(obj, Order):
             return obj.tenant.staff.filter(pk=request.user.pk).exists()
         
@@ -28,15 +30,13 @@ class IsGuestOrderOwner(permissions.BasePermission):
         return True 
 
     def has_object_permission(self, request, view, obj):
-        # 1. AMBIL TOKEN (Prioritas Utama)
-        # Pada metode GET, data seringkali ada di query_params, bukan .GET atau .data
+        # 1. AMBIL TOKEN (Prioritas Utama untuk Guest)
         token = (
             request.query_params.get('token') or 
             request.data.get('token') or 
             request.GET.get('token')
         )
         
-        # Jika ada token, verifikasi langsung (baik login maupun tidak)
         if token:
             expected_token = self.generate_order_token(str(obj.uuid))
             if hmac.compare_digest(token, expected_token):
@@ -58,9 +58,13 @@ class IsGuestOrderOwner(permissions.BasePermission):
           
         return False
 
-  def generate_order_token(self, order_uuid):
-      return hmac.new(
-          settings.SECRET_KEY.encode(),
-          order_uuid.encode(),
-          hashlib.sha256,
-      ).hexdigest()
+    def generate_order_token(self, order_uuid):
+        """
+        Helper method untuk generate HMAC token. 
+        Sekarang sudah berada di dalam class IsGuestOrderOwner.
+        """
+        return hmac.new(
+            settings.SECRET_KEY.encode(),
+            order_uuid.encode(),
+            hashlib.sha256,
+        ).hexdigest()

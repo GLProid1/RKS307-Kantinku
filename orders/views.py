@@ -390,6 +390,10 @@ class OrderListView(generics.ListAPIView):
 
     def get_queryset(self):
         user = self.request.user
+        Order.objects.filter(
+            status='AWAITING_PAYMENT',
+            expired_at__lt=timezone.now()
+        ).update(status='EXPIRED')
         base_qs = Order.objects.all()
 
         # --- PERBAIKAN LOGIKA IZIN ---

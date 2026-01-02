@@ -10,6 +10,7 @@ from django.contrib.auth.models import User
 from rest_framework.response import Response
 from users.permissions import IsAdminUser
 from rest_framework import generics
+from django.db.models import ProtectedError
 
 class StandViewSet(viewsets.ModelViewSet):
     serializer_class = StandSerializer

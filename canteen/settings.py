@@ -75,10 +75,10 @@ REST_FRAMEWORK = {
         'rest_framework.throttling.UserRateThrottle'
     ],
     'DEFAULT_THROTTLE_RATES': {
-        'anon': '10/day',      # Batas untuk user tanpa login (secara global)
+        'anon': '200/hour',      # Batas untuk user tanpa login (secara global)
         'user': '1000/day',    # Batas untuk user yang sudah login
-        'burst': '5/minute',   # Batas cepat untuk aksi sensitif
-        'sustained': '100/day',
+        'burst': '60/minute',   # Batas cepat untuk aksi sensitif
+        'sustained': '1000/day',
     },
 }
 

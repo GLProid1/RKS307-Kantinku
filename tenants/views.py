@@ -74,6 +74,16 @@ class StandViewSet(viewsets.ModelViewSet):
         
         return [permission() for permission in permission_classes]
 
+    def destroy(self, request, *args, **kwargs):
+            instance = self.get_object()
+            try:
+                return super().destroy(request, *args, **kwargs)
+            except ProtectedError:
+                return Response(
+                    {"detail": f"Stand '{instance.name}' tidak bisa dihapus karena memiliki data transaksi. Silakan nonaktifkan saja statusnya."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
 class MenuItemViewSet(viewsets.ModelViewSet):
     serializer_class = MenuItemSerializer
     parser_classes = (MultiPartParser, FormParser,JSONParser)

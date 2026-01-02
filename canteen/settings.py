@@ -197,7 +197,7 @@ CORS_ALLOW_CREDENTIALS = True
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 # Penting agar Login & POST request tidak 403 Forbidden saat pakai Domain
-CSRF_TRUSTED_ORIGINS = os.getenv('CSRF_TRUSTED_ORIGINS', 'https://kantinku.com').split(',')
+CSRF_TRUSTED_ORIGINS = os.getenv('CSRF_TRUSTED_ORIGINS', 'https://www.kantinku.com').split(',')
 
 
 MEDIA_URL = '/media/'

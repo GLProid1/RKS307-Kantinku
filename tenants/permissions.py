@@ -3,14 +3,10 @@ from tenants.models import Tenant, MenuItem
 from django.shortcuts import get_object_or_404
 
 class IsTenantStaff(permissions.BasePermission):
-    """
-    Izin untuk Admin atau Seller (staf) yang terdaftar di Tenant.
-    Digunakan untuk view Tenant (Stand) dan MenuItem.
-    """
     message = "Anda bukan staf dari tenant ini."
 
     def has_object_permission(self, request, view, obj):
-        # --- PERBAIKAN: Cek 'is_staff' (Superuser) ---
+        # Cek Superuser/Admin
         if request.user.is_staff or request.user.groups.filter(name='Admin').exists():
             return True
         
@@ -21,7 +17,22 @@ class IsTenantStaff(permissions.BasePermission):
             tenant = obj.tenant
         
         if tenant:
-            return tenant.staff.filter(pk=request.user.pk).exists()
+            # --- MULAI DEBUG PRINT (Cek Log Docker Nanti) ---
+            print(f"--- DEBUG PERMISSION ---")
+            print(f"User Login: {request.user} (ID: {request.user.id})")
+            print(f"Target Tenant: {tenant.name} (ID: {tenant.id})")
+            
+            # Cek apakah user ada di list staff
+            is_member = tenant.staff.filter(pk=request.user.pk).exists()
+            
+            # Print semua staff yang terdaftar di tenant ini
+            all_staff = list(tenant.staff.all().values_list('username', flat=True))
+            print(f"Daftar Staff di Database: {all_staff}")
+            print(f"Apakah User Member? {is_member}")
+            print(f"------------------------")
+            # --- SELESAI DEBUG ---
+
+            return is_member
         
         return False
     

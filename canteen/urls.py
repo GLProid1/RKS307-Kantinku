@@ -17,9 +17,10 @@ Including another URLconf
 # Lokasi: canteen/urls.py
 
 from django.contrib import admin
-from django.urls import path, include # Pastikan 'include' sudah di-import
+from django.urls import path, include, re_path # Pastikan 'include' sudah di-import
 from django.conf import settings
 from django.conf.urls.static import static
+from django.views.static import serve
 from drf_spectacular.views import SpectacularAPIView, SpectacularRedocView, SpectacularSwaggerView
 
 urlpatterns = [
@@ -43,4 +44,13 @@ urlpatterns = [
 ]
 
 if settings.DEBUG:
+    # Mode Development (Laptop/Lokal)
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+else:
+    # Mode Production (VM Terpisah)
+    # Kita paksa Django melayani media files agar bisa diambil oleh Nginx Proxy di VM sebelah
+    urlpatterns += [
+        re_path(r'^media/(?P<path>.*)$', serve, {
+            'document_root': settings.MEDIA_ROOT,
+        }),
+    ]

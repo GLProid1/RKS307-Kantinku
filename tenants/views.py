@@ -18,21 +18,23 @@ class StandViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
         
-        # 1. Jika User belum login, tampilkan semua stand aktif
+        # 1. Admin Django / Superuser -> Boleh lihat SEMUA (termasuk yang tidak active)
+        if user.is_staff or user.groups.filter(name='Admin').exists():
+            return Tenant.objects.all()
+
+        # 2. User Belum Login -> Customer -> Lihat semua yang active
         if not user.is_authenticated:
             return Tenant.objects.filter(active=True)
 
-        # 2. Jika User adalah Admin (Staff Django), boleh lihat semua (termasuk yang tutup)
-        if user.is_staff:
-            return Tenant.objects.all()
-
         # --- PERBAIKAN DI SINI ---
-        # Logika pembatasan (Nomor 3) dihapus agar Seller juga bisa melihat stand lain.
-        # User yang punya tenant (Seller) akan lanjut ke logika Nomor 4 di bawah.
         
-        # 4. [LOGIKA KASIR, CUSTOMER, & SELLER]
-        # Semua user yang login (selain Admin) sekarang bisa melihat SEMUA stand yang aktif.
-        # Ini memenuhi permintaan: "Stand list full semua stand"
+        # 3. Jika User adalah SELLER -> HANYA kembalikan Tenant miliknya
+        # Ini mencegah Seller "nyasar" ke dashboard orang lain.
+        if user.groups.filter(name='Seller').exists():
+            # Menggunakan related_name='tenants' dari models.py
+            return user.tenants.all()
+
+        # 4. Jika User adalah CASHIER atau CUSTOMER (Login) -> Lihat semua yang active (Untuk Ordering)
         return Tenant.objects.filter(active=True)
 
     @action(detail=True, methods=['post'], permission_classes=[IsAdminUser], url_path='manage-staff')

@@ -312,6 +312,7 @@ class UpdateOrderStatusView(APIView):
     permission_classes = [IsOrderTenantStaff]
 
     VALID_TRANSITIONS = {
+        'AWAITING_PAYMENT': ['PAID'],
         'PAID': ['PROCESSING'],
         'PROCESSING': ['READY'],
         'READY': ['COMPLETED']

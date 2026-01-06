@@ -60,4 +60,4 @@ class OrderSerializer(serializers.ModelSerializer):
     customer = CustomerSerializer(allow_null=True)  # <-- TAMBAHKAN INI
     class Meta:
         model = Order
-        fields = ['id','uuid', 'references_code', 'tenant', 'table', 'customer', 'status', 'payment_method', 'total', 'items', 'created_at', 'paid_at', 'meta']
+        fields = ['id','uuid','cashier_pin', 'references_code', 'tenant', 'table', 'customer', 'status', 'payment_method', 'total', 'items', 'created_at', 'paid_at', 'meta']

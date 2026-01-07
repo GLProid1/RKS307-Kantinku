@@ -78,7 +78,8 @@ class VerifyOrderByPinView(APIView):
     """
     Endpoint untuk kasir memverifikasi order berdasarkan PIN dari pelanggan.
     """
-    permission_classes = [IsCashierUser]
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated, IsCashierUser]
     throttle_classes = [VerifyPinThrottle]
     def post(self, request):
       pin = request.data.get('pin')

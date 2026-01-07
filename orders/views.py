@@ -13,6 +13,8 @@ from django.db.models import Sum, Count, Avg, Q, OuterRef, Subquery, IntegerFiel
 from django.db.models.functions import TruncHour
 from django.contrib.auth.models import User, Group
 from rest_framework import status, permissions, generics, viewsets, serializers
+from rest_framework.authentication import TokenAuthentication
+from rest_framework.permissions import IsAuthenticated
 
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -309,7 +311,8 @@ class CancelOrderView(APIView):
     return Response({"detail": f"Order dengan status {order.status} tidak dapat dibatalkan."}, status=status.HTTP_400_BAD_REQUEST)
   
 class UpdateOrderStatusView(APIView):
-    permission_classes = [IsOrderTenantStaff]
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated, IsOrderTenantStaff]
 
     VALID_TRANSITIONS = {
         'AWAITING_PAYMENT': ['PAID'],

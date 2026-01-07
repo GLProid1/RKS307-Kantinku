@@ -8,6 +8,8 @@ from rest_framework import status, generics
 from orders.models import Order
 from orders.tasks import send_order_paid_notification
 from orders.serializers import OrderSerializer
+from rest_framework.authentication import TokenAuthentication
+from rest_framework.permissions import IsAuthenticated
 from .permissions import IsCashierUser
 from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
@@ -16,7 +18,8 @@ security_logger = logging.getLogger('security')
 
 
 class CashConfirmView(APIView):
-  permission_classes = [IsCashierUser]
+  authentication_classes = [TokenAuthentication]
+  permission_classes = [IsAuthenticated, IsCashierUser]
   
   def post(self, request, order_uuid):
     order = get_object_or_404(Order, uuid=order_uuid)

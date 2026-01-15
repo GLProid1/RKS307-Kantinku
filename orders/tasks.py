@@ -54,50 +54,46 @@ def is_disposable_email(email):
         return True
 
 @shared_task
-def send_cash_order_invoice(order_id):
+def send_cash_order_invoice(order_id, pin=None): # <--- PERBAIKAN 1: Tambah parameter pin
     """
     Mengirim email invoice dan PIN untuk pesanan dengan metode pembayaran CASH.
-    Dilengkapi dengan validasi keamanan DNS dan filter domain disposable.
     """
     try:
         order = Order.objects.select_related('customer', 'tenant').get(pk=order_id)
     except Order.DoesNotExist:
         return False
   
-    # Hanya kirim jika ada customer, email, dan PIN
-    if not (order.customer and order.customer.email and order.cashier_pin):
+    # PERBAIKAN 2: Cek keberadaan parameter 'pin', jangan pakai order.cashier_pin (karena itu HASH)
+    if not (order.customer and order.customer.email and pin):
         return "No customer email or PIN found"
   
     email_address = order.customer.email
     
-    # 1. Validasi Keamanan: Filter domain email sementara
     if is_disposable_email(email_address):
         return f"Blocked disposable email: {email_address}"
 
-    # 2. Validasi format syntax email dan domain DNS
     try:
-        # Validasi format syntax
         validate_email(email_address)
-        # Validasi domain (DNS check sederhana)
         domain = email_address.split('@')[1]
         socket.gethostbyname(domain)
     except (ValidationError, socket.error):
         return f"Invalid email or domain: {email_address}"
 
     subject = f"Instruksi Pembayaran Pesanan Anda #{order.references_code}"
+    
+    # PERBAIKAN 3: Masukkan parameter 'pin' ke context, bukan order.cashier_pin
     context = {
         'order': order,
-        'pin': order.cashier_pin,
+        'pin': pin, # <--- PIN Asli (123456)
         'tenant_name': order.tenant.name,
     }
     
     try:
-        # Merender template HTML untuk email
         html_message = render_to_string('emails/cash_invoice.html', context)
-        plain_message = f"Terima kasih telah memesan. Tunjukkan PIN ini: {order.cashier_pin} ke kasir untuk pembayaran."
+        # PERBAIKAN 4: Pesan teks juga gunakan pin asli
+        plain_message = f"Terima kasih telah memesan. Tunjukkan PIN ini: {pin} ke kasir untuk pembayaran."
         from_email = settings.EMAIL_HOST_USER
         
-        # Mengirim email menggunakan backend SMTP yang dikonfigurasi
         send_mail(
             subject, 
             plain_message, 
@@ -108,5 +104,4 @@ def send_cash_order_invoice(order_id):
         )
         return f"Invoice sent to {email_address} for order {order.pk}"
     except Exception as e:
-        # Mencatat error jika terjadi kegagalan pengiriman
         return f"Error mengirim email: {str(e)}"

@@ -56,9 +56,10 @@ class UserViewSet(viewsets.ModelViewSet):
     
 
 @method_decorator(csrf_exempt, name='dispatch')
+@method_decorator(csrf_exempt, name='dispatch')
 class LoginView(APIView):
     permission_classes = [AllowAny]
-  
+
     def post(self, request, *args, **kwargs):
         username = request.data.get('username')
         password = request.data.get('password')
@@ -67,27 +68,27 @@ class LoginView(APIView):
         
         if user:
             login(request, user)
-            role = 'customer' # Default
+            role = 'customer'
 
-            # Cek Grup
+            # Cek grup
             if user.groups.filter(name__iexact='Cashier').exists():
                 role = 'cashier'
             elif user.groups.filter(name__iexact='Seller').exists():
                 role = 'seller'
-            elif user.groups.filter(name__iexact='Admin').exists():
-                role = 'admin'
-            elif user.is_superuser or user.is_staff:
+            elif user.groups.filter(name__iexact='Admin').exists() or user.is_staff:
                 role = 'admin'
 
-            token, _ = Token.objects.get_or_create(user=user)
-            
-            # LOGIKA PENGALIHAN (REDIRECT)
-            # Kasir & Admin tetap di rute internal aplikasi utama
+            # Hapus token lama
+            Token.objects.filter(user=user).delete()
+
+            # Buat token baru
+            token = Token.objects.create(user=user)
+
+            # Redirect / initial dashboard
             if role == 'cashier':
                 initial_dashboard = "/pos"
             elif role == 'admin':
                 initial_dashboard = "/"
-            # Seller diarahkan ke port/domain aplikasi Tenant (contoh: port 5174)
             elif role == 'seller':
                 initial_dashboard = f"http://localhost:5174/external-login?token={token.key}"
             else:
@@ -98,13 +99,15 @@ class LoginView(APIView):
                 "user": {
                     **UserSerializer(user).data,
                     "role": role,
-                    "initial_dashboard": initial_dashboard 
+                    "initial_dashboard": initial_dashboard
                 },
                 "message": f"Login Berhasil. Hi, {user.username}!"
             }, status=status.HTTP_200_OK)
+
         return Response({
             "detail": "Username atau password salah."
         }, status=status.HTTP_401_UNAUTHORIZED)
+
 
 
 class LogoutView(APIView):

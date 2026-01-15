@@ -107,7 +107,6 @@ class CreateOrderView(APIView):
     email = data.get('email')
     phone = data.get('phone')
     if email:
-        # Gunakan update_or_create untuk memperbarui nama/telepon jika email sudah ada
       customer, _ = Customer.objects.get_or_create(email=email, defaults={'name': name, 'phone': phone})
       
     try:
@@ -123,29 +122,26 @@ class CreateOrderView(APIView):
             if not menu_item or not menu_item.available or menu_item.stock < item_data['qty']:
                 raise serializers.ValidationError(f"Stok untuk '{menu_item.name if menu_item else 'item'}' tidak mencukupi atau tidak tersedia.")
 
-        # --- BAGIAN INI SUDAH DIUPDATE UNTUK ENKRIPSI ---
         cashier_pin_db = None
-        plain_pin_for_email = None # Variabel untuk menyimpan PIN asli sementara
+        plain_pin_for_email = None 
 
         if data['payment_method'] == 'CASH':
             while True:
-                pin = generate_order_pin() # PIN Asli (misal: 123456)
+                pin = generate_order_pin() # PIN Asli (contoh: 123456)
                 
-                # Buat Hash SHA-256 dari PIN
+                # Buat Hash SHA-256 dari PIN untuk disimpan di DB
                 hashed_pin = hashlib.sha256(pin.encode()).hexdigest()
                 
-                # Cek keunikan berdasarkan HASH di database
                 if not Order.objects.filter(cashier_pin=hashed_pin, status__in=['AWAITING_PAYMENT', 'PAID']).exists():
                     cashier_pin_db = hashed_pin     # Simpan Hash ke DB
-                    plain_pin_for_email = pin       # Simpan Asli untuk Email
+                    plain_pin_for_email = pin       # Simpan Asli untuk Email & Respons Frontend
                     break
-        # ------------------------------------------------
 
         order = Order.objects.create(
           tenant=tenant, table=table, customer=customer,
           payment_method=data['payment_method'],
           status = 'AWAITING_PAYMENT',
-          cashier_pin=cashier_pin_db, # Simpan HASH di sini
+          cashier_pin=cashier_pin_db, # Simpan HASH di database
           expired_at = timezone.now() + timezone.timedelta(minutes=10)
         )
 
@@ -210,7 +206,7 @@ class CreateOrderView(APIView):
     if order.payment_method == 'TRANSFER':
       payment_info = initiate_payment_for_order(order)
     elif order.payment_method== 'CASH':
-        # UPDATE: Kirim PIN asli ke task email, karena di DB isinya hash
+        # Kirim PIN asli ke task email
         transaction.on_commit(lambda: send_cash_order_invoice.delay(order.pk, plain_pin_for_email))
         
     if not request.user.is_authenticated:
@@ -225,8 +221,17 @@ class CreateOrderView(APIView):
         hashlib.sha256
     ).hexdigest()
     
+    # --- PERBAIKAN UTAMA DI SINI ---
+    # Serializer mengambil data dari DB (yang berisi HASH)
+    order_response_data = OrderSerializer(order, context={'request': request}).data
+    
+    # Kita timpa field 'cashier_pin' di respons JSON dengan PIN ASLI
+    # Agar frontend bisa menampilkan angka yang benar ke user
+    if plain_pin_for_email:
+        order_response_data['cashier_pin'] = plain_pin_for_email
+
     resp = {
-      'order': OrderSerializer(order, context={'request': request}).data,
+      'order': order_response_data,
       'payment': payment_info,
       'token': guest_token 
     }

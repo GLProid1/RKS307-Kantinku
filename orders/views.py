@@ -16,6 +16,7 @@ from rest_framework import status, permissions, generics, viewsets, serializers
 from rest_framework.authentication import TokenAuthentication
 from rest_framework.permissions import IsAuthenticated
 
+from django.contrib.auth.hashers import make_password
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status, permissions, generics, viewsets, serializers
@@ -130,7 +131,7 @@ class CreateOrderView(APIView):
                 pin = generate_order_pin() # PIN Asli (contoh: 123456)
                 
                 # Buat Hash SHA-256 dari PIN untuk disimpan di DB
-                hashed_pin = hashlib.sha256(pin.encode()).hexdigest()
+                hashed_pin = make_password(pin)
                 
                 if not Order.objects.filter(cashier_pin=hashed_pin, status__in=['AWAITING_PAYMENT', 'PAID']).exists():
                     cashier_pin_db = hashed_pin     # Simpan Hash ke DB

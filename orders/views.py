@@ -123,20 +123,29 @@ class CreateOrderView(APIView):
             if not menu_item or not menu_item.available or menu_item.stock < item_data['qty']:
                 raise serializers.ValidationError(f"Stok untuk '{menu_item.name if menu_item else 'item'}' tidak mencukupi atau tidak tersedia.")
 
-        cashier_pin = None
+        # --- BAGIAN INI SUDAH DIUPDATE UNTUK ENKRIPSI ---
+        cashier_pin_db = None
+        plain_pin_for_email = None # Variabel untuk menyimpan PIN asli sementara
+
         if data['payment_method'] == 'CASH':
-            # Loop untuk memastikan PIN unik untuk order yang masih aktif
             while True:
-                pin = generate_order_pin()
-                if not Order.objects.filter(cashier_pin=pin, status__in=['AWAITING_PAYMENT', 'PAID']).exists():
-                    cashier_pin = pin
+                pin = generate_order_pin() # PIN Asli (misal: 123456)
+                
+                # Buat Hash SHA-256 dari PIN
+                hashed_pin = hashlib.sha256(pin.encode()).hexdigest()
+                
+                # Cek keunikan berdasarkan HASH di database
+                if not Order.objects.filter(cashier_pin=hashed_pin, status__in=['AWAITING_PAYMENT', 'PAID']).exists():
+                    cashier_pin_db = hashed_pin     # Simpan Hash ke DB
+                    plain_pin_for_email = pin       # Simpan Asli untuk Email
                     break
+        # ------------------------------------------------
 
         order = Order.objects.create(
           tenant=tenant, table=table, customer=customer,
           payment_method=data['payment_method'],
           status = 'AWAITING_PAYMENT',
-          cashier_pin=cashier_pin,
+          cashier_pin=cashier_pin_db, # Simpan HASH di sini
           expired_at = timezone.now() + timezone.timedelta(minutes=10)
         )
 
@@ -201,7 +210,8 @@ class CreateOrderView(APIView):
     if order.payment_method == 'TRANSFER':
       payment_info = initiate_payment_for_order(order)
     elif order.payment_method== 'CASH':
-        transaction.on_commit(lambda: send_cash_order_invoice.delay(order.pk))
+        # UPDATE: Kirim PIN asli ke task email, karena di DB isinya hash
+        transaction.on_commit(lambda: send_cash_order_invoice.delay(order.pk, plain_pin_for_email))
         
     if not request.user.is_authenticated:
         guest_uuids = request.session.get('guest_order_uuids', [])
@@ -209,19 +219,16 @@ class CreateOrderView(APIView):
             guest_uuids.append(str(order.uuid))
             request.session['guest_order_uuids'] = guest_uuids
     
-    # --- TAMBAHAN KODE PENTING (START) ---
-    # Generate Token HMAC agar Frontend bisa mengakses order ini
     guest_token = hmac.new(
         settings.SECRET_KEY.encode(),
         str(order.uuid).encode(),
         hashlib.sha256
     ).hexdigest()
-    # --- TAMBAHAN KODE PENTING (END) ---
     
     resp = {
       'order': OrderSerializer(order, context={'request': request}).data,
       'payment': payment_info,
-      'token': guest_token  # <--- Pastikan token dikirim ke frontend
+      'token': guest_token 
     }
     return Response(resp, status=status.HTTP_201_CREATED)
   

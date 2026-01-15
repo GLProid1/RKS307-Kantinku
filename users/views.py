@@ -57,56 +57,43 @@ class UserViewSet(viewsets.ModelViewSet):
 
 @method_decorator(csrf_exempt, name='dispatch')
 @method_decorator(csrf_exempt, name='dispatch')
+
 class LoginView(APIView):
     permission_classes = [AllowAny]
 
-    def post(self, request, *args, **kwargs):
-        username = request.data.get('username')
-        password = request.data.get('password')
-        
-        user = authenticate(request, username=username, password=password)
-        
-        if user:
-            login(request, user)
+    def post(self, request):
+        username = request.data.get("username")
+        password = request.data.get("password")
+
+        user = authenticate(username=username, password=password)
+        if not user:
+            return Response(
+                {"detail": "Username atau password salah"},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
+        # 🔐 TOKEN SEKALI PAKAI
+        Token.objects.filter(user=user).delete()
+        token = Token.objects.create(user=user)
+
+        # Role detection
+        if user.groups.filter(name__iexact='Cashier').exists():
+            role = 'cashier'
+        elif user.groups.filter(name__iexact='Seller').exists():
+            role = 'seller'
+        elif user.groups.filter(name__iexact='Admin').exists():
+            role = 'admin'
+        else:
             role = 'customer'
 
-            # Cek grup
-            if user.groups.filter(name__iexact='Cashier').exists():
-                role = 'cashier'
-            elif user.groups.filter(name__iexact='Seller').exists():
-                role = 'seller'
-            elif user.groups.filter(name__iexact='Admin').exists() or user.is_staff:
-                role = 'admin'
-
-            # Hapus token lama
-            Token.objects.filter(user=user).delete()
-
-            # Buat token baru
-            token = Token.objects.create(user=user)
-
-            # Redirect / initial dashboard
-            if role == 'cashier':
-                initial_dashboard = "/pos"
-            elif role == 'admin':
-                initial_dashboard = "/"
-            elif role == 'seller':
-                initial_dashboard = f"http://localhost:5174/external-login?token={token.key}"
-            else:
-                initial_dashboard = "/"
-
-            return Response({
-                "token": token.key,
-                "user": {
-                    **UserSerializer(user).data,
-                    "role": role,
-                    "initial_dashboard": initial_dashboard
-                },
-                "message": f"Login Berhasil. Hi, {user.username}!"
-            }, status=status.HTTP_200_OK)
-
         return Response({
-            "detail": "Username atau password salah."
-        }, status=status.HTTP_401_UNAUTHORIZED)
+            "token": token.key,
+            "user": {
+                **UserSerializer(user).data,
+                "role": role
+            },
+            "message": "Login berhasil"
+        }, status=status.HTTP_200_OK)
 
 
 

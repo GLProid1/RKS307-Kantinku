@@ -42,7 +42,7 @@ class Order(models.Model):
   
   uuid = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
   references_code = models.CharField(max_length=50, default=generate_references_code, unique=True)
-  cashier_pin = models.CharField(max_length=6, blank=True, null=True, help_text="PIN untuk konfirmasi kasir")
+  cashier_pin = models.CharField(max_length=64, blank=True, null=True, help_text="PIN (Hashed) untuk konfirmasi kasir")
   table = models.ForeignKey(Table, on_delete=models.SET_NULL, null=True, blank=True)
   tenant = models.ForeignKey(Tenant, on_delete=models.PROTECT, related_name='orders')
   customer = models.ForeignKey(Customer, on_delete=models.SET_NULL, null=True, blank=True)

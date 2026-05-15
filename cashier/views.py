@@ -9,6 +9,7 @@ from orders.models import Order
 from orders.tasks import send_order_paid_notification
 from orders.serializers import OrderSerializer
 from rest_framework.authentication import TokenAuthentication
+from django.contrib.auth.hashers import check_password
 from rest_framework.permissions import IsAuthenticated
 from .permissions import IsCashierUser
 from channels.layers import get_channel_layer

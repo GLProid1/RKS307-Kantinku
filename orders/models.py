@@ -4,17 +4,19 @@ from datetime import timedelta
 from django.db import transaction
 from tenants.models import Tenant, MenuItem, VariantOption
 import uuid
-import random
+import secrets
 import string
 from django.conf import settings
 
 def generate_references_code(prefix="KNT"):
-  ts = timezone.now().strftime("%Y%m%d%H%M%S")
-  rand = ''.join(random.choices(string.ascii_uppercase + string.digits, k=4))
-  return f"{prefix}-{ts}-{rand}"
+    ts = timezone.now().strftime("%Y%m%d%H%M%S")
+    # Gunakan secrets agar kriptografis aman dan ID tidak bisa ditebak
+    rand = ''.join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(4))
+    return f"{prefix}-{ts}-{rand}"
 
 def generate_order_pin(length=6):
-  return ''.join(random.choices(string.digits, k=length))
+    # Gunakan secrets untuk PIN kasir
+    return ''.join(secrets.choice(string.digits) for _ in range(length))
 
 class Table(models.Model):
   code = models.CharField(max_length=10, unique=True)

@@ -82,17 +82,36 @@ class VerifyOrderByPinView(APIView):
     permission_classes = [IsAuthenticated, IsCashierUser]
     throttle_classes = [VerifyPinThrottle]
     def post(self, request):
-      pin = request.data.get('pin')
-      if not pin:
-        return Response({'detail': "PIN diperlukan"}, status=status.HTTP_400_BAD_REQUEST)
-      
-      try:
-        # Cari order yang masing menunggu pembayaran, metode CASH, dan cocok dengan PIN-nya
-        order = Order.objects.get(
-          cashier_pin=pin,
-          status='AWAITING_PAYMENT',
-          payment_method="CASH"
-        )
-      except Order.DoesNotExist:
-        return Response({'detail': 'PIN tidak valid atau pesanan tidak tersedia.'}, status=status.HTTP_404_NOT_FOUND)
-      return Response(OrderSerializer(order).data, status=status.HTTP_200_OK)
+        pin = request.data.get('pin')
+        # Poin 5 & 6: Cari berdasarkan PIN
+        # KARENA PIN di database sudah ter-hash, kita tidak bisa langsung filter PIN.
+        # Lebih baik kasir memasukkan `references_code` + `pin`.
+        ref_code = request.data.get('references_code')
+        
+        try:
+            order = Order.objects.get(references_code=ref_code, status='AWAITING_PAYMENT', payment_method="CASH")
+        except Order.DoesNotExist:
+            return Response({'detail': 'Pesanan tidak ditemukan atau sudah diproses.'}, status=404)
+
+        # 6. Expiry Validation Ketat
+        if order.expired_at and timezone.now() > order.expired_at:
+            order.status = "EXPIRED"
+            order.cancel_and_restock() # Langsung kembalikan stok
+            return Response({'detail': 'Pesanan sudah kadaluarsa.'}, status=400)
+
+        # 5. PIN Retry Increment Logic
+        retry_count = order.meta.get('retry_count', 0)
+        if retry_count >= 5:
+            security_logger.warning(f"Brute force detected on PIN for order {ref_code}")
+            return Response({'detail': 'PIN terblokir karena terlalu banyak percobaan salah.'}, status=403)
+
+        if not check_password(pin, order.cashier_pin):
+            order.meta['retry_count'] = retry_count + 1
+            order.save(update_fields=['meta'])
+            return Response({'detail': f'PIN Salah. Sisa percobaan: {5 - order.meta["retry_count"]}'}, status=400)
+            
+        # Jika benar, reset retry count
+        order.meta['retry_count'] = 0
+        order.save(update_fields=['meta'])
+
+        return Response(OrderSerializer(order).data, status=status.HTTP_200_OK)

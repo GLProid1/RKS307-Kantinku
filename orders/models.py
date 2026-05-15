@@ -33,6 +33,7 @@ class Customer(models.Model):
     return self.phone
   
 class Order(models.Model):
+  
   ORDER_TYPE_CHOICES = [('DINE_IN', 'Dine-In'), ('TAKEAWAY', 'Takeaway')]
   STATUS_CHOICES = [
     ('AWAITING_PAYMENT', 'Awaiting Payment'), ('PAID', 'Paid'), ('PROCESSING', 'Processing'),
@@ -41,8 +42,8 @@ class Order(models.Model):
   PAYMENT_METHOD_CHOICES = [('CASH', 'Cash'), ('TRANSFER', 'Transfer')]
   
   uuid = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
-  references_code = models.CharField(max_length=50, default=generate_references_code, unique=True)
-  cashier_pin = models.CharField(max_length=64, blank=True, null=True, help_text="PIN (Hashed) untuk konfirmasi kasir")
+  references_code = models.CharField(max_length=50, default=generate_references_code, unique=True, db_index=True)
+  cashier_pin = models.CharField(max_length=255, blank=True, null=True, help_text="PIN (Hashed) untuk konfirmasi kasir")
   table = models.ForeignKey(Table, on_delete=models.SET_NULL, null=True, blank=True)
   tenant = models.ForeignKey(Tenant, on_delete=models.PROTECT, related_name='orders')
   customer = models.ForeignKey(Customer, on_delete=models.SET_NULL, null=True, blank=True)
@@ -99,3 +100,17 @@ class OrderItem(models.Model):
   def get_subtotal(self):
     total_variant_price = sum(variant.price for variant in self.selected_variants.all())
     return (self.price + total_variant_price) * self.qty
+
+class PaymentWebhookLog(models.Model):
+    order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='webhook_logs')
+    transaction_id = models.CharField(max_length=255, db_index=True)
+    payload = models.JSONField()
+    status = models.CharField(max_length=50)
+    signature_valid = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        # Poin 2: Unique constraint memastikan 1 transaksi per status tidak duplicate log
+        constraints = [
+            models.UniqueConstraint(fields=['transaction_id', 'status'], name='unique_transaction_status')
+        ]

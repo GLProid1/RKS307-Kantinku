@@ -16,6 +16,9 @@ from rest_framework import status, permissions, generics, viewsets, serializers
 from rest_framework.authentication import TokenAuthentication
 from rest_framework.permissions import IsAuthenticated
 
+from decimal import Decimal
+from rest_framework.throttling import AnonRateThrottle
+
 from django.contrib.auth.hashers import make_password
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -24,7 +27,7 @@ from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny, IsAuthenticated, OR
 from rest_framework.throttling import AnonRateThrottle
 
-from .models import Order, OrderItem, Customer, MenuItem, Tenant, Table, generate_order_pin
+from .models import Order, OrderItem, Customer, MenuItem, Tenant, Table, generate_order_pin, PaymentWebhookLog
 from .serializers import (
     OrderSerializer, OrderCreateSerializer
 )
@@ -39,15 +42,32 @@ import io
 
 # Placeholder: dummy gateway payment
 def initiate_payment_for_order(order: Order):
-  payload = {
-    'method': 'VA',
-    'va_number': f'VA{order.references_code[-6:]}',
-    'bank': 'EXAMPLEBANK',
-    'expired_at': (timezone.now() + timezone.timedelta(hours=6)).isoformat()
-  }
-  order.meta.update({'payment': payload})
-  order.save(update_fields=['meta'])
-  return payload
+    import midtransclient
+    snap = midtransclient.Snap(
+        is_production=False,
+        server_key=settings.MIDTRANS_SERVER_KEY,
+        client_key=settings.MIDTRANS_CLIENT_KEY
+    )
+
+    param = {
+        "transaction_details": {
+            "order_id": order.references_code,
+            "gross_amount": int(float(order.total))
+        },
+        "item_details": [{
+            "id": item.menu_item.id,
+            "price": int(float(item.price)),
+            "quantity": item.qty,
+            "name": item.menu_item.name
+        } for item in order.items.all()],
+        "customer_details": {
+            "first_name": order.customer.name,
+            "email": order.customer.email,
+        }
+    }
+
+    transaction = snap.create_transaction(param)
+    return transaction
 
 class PopularMenusView(generics.ListAPIView):
     """
@@ -237,49 +257,85 @@ class CreateOrderView(APIView):
       'token': guest_token 
     }
     return Response(resp, status=status.HTTP_201_CREATED)
-  
+
+
+security_logger = logging.getLogger('security')
+class WebhookRateThrottle(AnonRateThrottle):
+    scope = 'webhook'
+    rate = '60/minute'
+    
 class MidtransWehboohView(APIView):
     permission_classes = [permissions.AllowAny]
-    
-    def post(self, request):
-      payload = request.data
-      external_id = payload.get("external_id") or payload.get("order_id") or None
-      status_code = payload.get("transaction_status") or payload.get('status')
-      
-      if not external_id:
-        return Response({"detail": 'tidak ada external_id'}, status=status.HTTP_404_NOT_FOUND)
-      
-      try:
-        order = Order.objects.get(references_code=external_id)
-      except Order.DoesNotExist:
-        return Response({"detail": "Order tidak ditemukan"}, status=status.HTTP_404_NOT_FOUND)
-      
-      if order.expired_at and timezone.now() > order.expired_at:
-        order.status = "EXPIRED"
-        order.save(update_fields=["status"])
-        return Response({"detail": "Order kadaluarsa, tidak bisa dibayar"}, status=400)
+    throttle_classes = [WebhookRateThrottle] # Batasi spam rate
 
-      
-      if status_code in ['settlement', 'paid', 'success']:
-        order.status = "PAID"
-        order.paid_at = timezone.now()
-        order.meta.setdefault('gateway_notification', []).append(payload)
-        order.save(update_fields=['status', 'paid_at', 'meta'])
+    def post(self, request):
+        payload = request.data
+        order_id = payload.get("order_id")
+        transaction_status = payload.get("transaction_status")
+        gross_amount = payload.get("gross_amount")
+        transaction_id = payload.get("transaction_id")
+        signature_key = payload.get("signature_key")
+
+        # 1. Sanitasi Payload (Poin 7)
+        safe_payload = payload.copy()
+        sensitive_keys = ['customer_details', 'va_numbers', 'bca_va_number', 'payment_amounts']
+        for key in sensitive_keys:
+            if key in safe_payload:
+                safe_payload[key] = "***REDACTED***"
+
+        # 2. Validasi Signature (Hmac Compare Digest)
+        server_key = settings.MIDTRANS_SERVER_KEY
+        raw_signature = f"{order_id}{payload.get('status_code')}{gross_amount}{server_key}"
+        calculated_signature = hashlib.sha512(raw_signature.encode()).hexdigest()
         
-        # Kirim notifikasi order yang sudah dibayar menggunakan celery
-        transaction.on_commit(lambda: send_order_paid_notification.delay(order.pk))
+        if not hmac.compare_digest(str(signature_key), calculated_signature):
+            # Hook untuk Wazuh (Poin 8 - Warning/High)
+            security_logger.warning(f"SECURITY_ALERT: Invalid Signature detected for Order {order_id}. Possible spoofing.")
+            return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+        # 3. Idempotency Key Kuat (Poin 1)
+        # Kombinasi transaction_id + status agar callback update (ex: pending -> settlement) tetap masuk
+        log_qs = PaymentWebhookLog.objects.filter(transaction_id=transaction_id, status=transaction_status)
+        if log_qs.exists():
+            return Response({"detail": "Idempotency: Already processed"}, status=200)
+
+        try:
+            with transaction.atomic():
+                order = Order.objects.select_for_update().get(references_code=order_id)
+                
+                # 4. Validasi Gross Amount (Poin 10 - CRITICAL)
+                # Gunakan Decimal agar tidak ada presisi float yang meleset
+                if Decimal(str(gross_amount)) != order.total:
+                    security_logger.critical(f"SECURITY_ALERT: Amount Mismatch! Order {order_id} total is {order.total}, but webhook sent {gross_amount}.")
+                    return Response({"detail": "Amount Mismatch"}, status=status.HTTP_400_BAD_REQUEST)
+
+                # Simpan Log dengan payload tersanitasi
+                PaymentWebhookLog.objects.create(
+                    order=order,
+                    transaction_id=transaction_id,
+                    payload=safe_payload,
+                    status=transaction_status,
+                    signature_valid=True
+                )
+
+                if order.status == 'PAID':
+                    # Replay detected logic (Poin 8)
+                    security_logger.info(f"Replay/Late callback detected for already PAID order {order_id}.")
+                    return Response({"detail": "Already PAID"}, status=200)
+
+                # --- Lanjutkan logika update status settlement/cancel seperti biasa ---
+                if transaction_status in ['settlement', 'capture']:
+                    order.status = "PAID"
+                    order.paid_at = timezone.now()
+                    order.save(update_fields=['status', 'paid_at'])
+                    transaction.on_commit(lambda: send_order_paid_notification.delay(order.pk))
+                elif transaction_status in ['expire', 'cancel', 'deny']:
+                    order.cancel_and_restock()
+
+        except Order.DoesNotExist:
+            return Response({"detail": "Not Found"}, status=404)
         
-        return Response({'detail': 'Order marked paid'}, status=200)
-      
-      if status_code in ['expire', 'expired', 'cancel']:
-        order.status = "CANCELLED"
-        order.meta.setdefault('gateway_notification', []).append(payload)
-        order.save(update_fields=['status', 'meta'])
-        return Response({"detail": "Order Cancelled"}, status=200)
-      
-      order.meta.setdefault("gateway_notification", []).append(payload)
-      order.save(update_fields=['meta'])
-      return Response({"detail": "Ok"}, status=200)
+        return Response({"detail": "OK"}, status=200)
 
 class OrderDetailView(generics.RetrieveAPIView):
     # Menggunakan select_related agar data customer tersedia saat pengecekan permission

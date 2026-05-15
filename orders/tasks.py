@@ -9,6 +9,9 @@ from django.template.loader import render_to_string
 from django.core.validators import validate_email
 from django.core.exceptions import ValidationError
 import socket
+from django.utils import timezone
+from datetime import timedelta
+from .models import PaymentWebhookLog
 
 @shared_task
 def send_order_paid_notification(order_id):
@@ -105,3 +108,10 @@ def send_cash_order_invoice(order_id, pin=None): # <--- PERBAIKAN 1: Tambah para
         return f"Invoice sent to {email_address} for order {order.pk}"
     except Exception as e:
         return f"Error mengirim email: {str(e)}"
+
+@shared_task
+def cleanup_old_webhook_logs():
+    """Hapus log webhook yang lebih lama dari 90 hari."""
+    retention_date = timezone.now() - timedelta(days=90)
+    deleted_count, _ = PaymentWebhookLog.objects.filter(created_at__lt=retention_date).delete()
+    return f"Deleted {deleted_count} old webhook logs."

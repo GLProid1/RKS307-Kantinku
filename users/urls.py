@@ -1,13 +1,14 @@
 # users/urls.py
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from rest_framework.authtoken.views import obtain_auth_token 
 from .views import (
-    UserViewSet, LoginView, LogoutView, CheckAuthView, EditView, ChangePasswordView
+    UserViewSet, LoginView, LogoutView, CheckAuthView, 
+    EditView, ChangePasswordView, CustomTokenRefreshView
 )
+
 app_name = 'users'
 router = DefaultRouter()
-router.register(r'', UserViewSet, basename='user') # Akan menjadi api/users/all/
+router.register(r'', UserViewSet, basename='user')
 
 urlpatterns = [
     # URL Autentikasi
@@ -17,7 +18,8 @@ urlpatterns = [
     path('edit-profile/', EditView.as_view(), name='edit-profile'),
     path('change-password/', ChangePasswordView.as_view(), name='change-password'),
 
-    # Ini adalah URL token-based, jika Anda masih mau pakai
-    path('token/', obtain_auth_token, name='api_token_auth'),
+    # URL Refresh Token JWT Baru
+    path('token/refresh/', CustomTokenRefreshView.as_view(), name='token_refresh'),
+
     path('', include(router.urls)),
 ]

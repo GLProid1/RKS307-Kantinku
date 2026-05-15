@@ -1,0 +1,32 @@
+INFO 2026-05-15 19:44:31,267 apps AXES: BEGIN version 8.3.1, blocking by username or ip_address
+INFO 2026-05-15 19:44:33,417 apps AXES: BEGIN version 8.3.1, blocking by username or ip_address
+INFO 2026-05-15 19:44:46,147 apps AXES: BEGIN version 8.3.1, blocking by username or ip_address
+INFO 2026-05-15 19:44:55,158 apps AXES: BEGIN version 8.3.1, blocking by username or ip_address
+INFO 2026-05-15 19:45:05,578 apps AXES: BEGIN version 8.3.1, blocking by username or ip_address
+INFO 2026-05-15 19:45:06,761 apps AXES: BEGIN version 8.3.1, blocking by username or ip_address
+INFO 2026-05-15 19:47:36,395 database AXES: User login failed, running database handler for failure.
+INFO 2026-05-15 19:47:36,398 database AXES: Cleaned up 0 expired access attempts from database that were older than 2026-05-15 11:47:36.002116+00:00
+WARNING 2026-05-15 19:47:36,404 database AXES: New login failure by {username: "********************", ip_address: "********************", user_agent: "Thunder Client (https://www.thunderclient.com)", path_info: "/api/users/login/"}. Created new record in the database.
+WARNING 2026-05-15 19:47:36,410 views [AUTH FAILED] Login attempt/lockout for user: admin_kantin from IP: 127.0.0.1
+INFO 2026-05-15 19:48:10,389 database AXES: User login failed, running database handler for failure.
+INFO 2026-05-15 19:48:10,391 database AXES: Cleaned up 0 expired access attempts from database that were older than 2026-05-15 11:48:09.799527+00:00
+WARNING 2026-05-15 19:48:10,396 database AXES: New login failure by {username: "********************", ip_address: "********************", user_agent: "Thunder Client (https://www.thunderclient.com)", path_info: "/api/users/login/"}. Created new record in the database.
+WARNING 2026-05-15 19:48:10,401 views [AUTH FAILED] Login attempt/lockout for user: poli from IP: 127.0.0.1
+INFO 2026-05-15 19:48:21,011 database AXES: User login failed, running database handler for failure.
+INFO 2026-05-15 19:48:21,014 database AXES: Cleaned up 0 expired access attempts from database that were older than 2026-05-15 11:48:20.073598+00:00
+WARNING 2026-05-15 19:48:21,020 database AXES: New login failure by {username: "********************", ip_address: "********************", user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36", path_info: "/panel-knt-rahasia/login/"}. Created new record in the database.
+INFO 2026-05-15 19:48:25,700 database AXES: User login failed, running database handler for failure.
+INFO 2026-05-15 19:48:25,702 database AXES: Cleaned up 0 expired access attempts from database that were older than 2026-05-15 11:48:24.903040+00:00
+WARNING 2026-05-15 19:48:25,709 database AXES: New login failure by {username: "********************", ip_address: "********************", user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36", path_info: "/panel-knt-rahasia/login/"}. Created new record in the database.
+INFO 2026-05-15 19:48:54,487 apps AXES: BEGIN version 8.3.1, blocking by username or ip_address
+INFO 2026-05-15 19:49:24,296 views [AUTH SUCCESS] User: poli logged in successfully from IP: 127.0.0.1
+INFO 2026-05-15 19:53:26,737 views [AUTH SUCCESS] User: poli logged in successfully from IP: 127.0.0.1
+INFO 2026-05-15 19:57:51,619 apps AXES: BEGIN version 8.3.1, blocking by username or ip_address
+INFO 2026-05-15 19:57:58,611 apps AXES: BEGIN version 8.3.1, blocking by username or ip_address
+INFO 2026-05-15 19:58:43,970 apps AXES: BEGIN version 8.3.1, blocking by username or ip_address
+INFO 2026-05-15 20:06:29,870 views [AUTH SUCCESS] User: poli logged in successfully from IP: 127.0.0.1
+INFO 2026-05-15 20:12:14,763 views [AUTH SUCCESS] User: poli logged in successfully from IP: 127.0.0.1
+INFO 2026-05-15 20:13:03,212 apps AXES: BEGIN version 8.3.1, blocking by username or ip_address
+INFO 2026-05-15 20:13:04,252 apps AXES: BEGIN version 8.3.1, blocking by username or ip_address
+INFO 2026-05-15 20:16:09,335 views [AUTH SUCCESS] User: poli logged in successfully from IP: 127.0.0.1
+INFO 2026-05-15 20:27:44,008 apps AXES: BEGIN version 8.3.1, blocking by username or ip_address

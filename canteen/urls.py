@@ -24,7 +24,7 @@ from django.views.static import serve
 from drf_spectacular.views import SpectacularAPIView, SpectacularRedocView, SpectacularSwaggerView
 
 urlpatterns = [
-    path('admin/', admin.site.urls),
+    path('panel-knt-rahasia/', admin.site.urls),
     
     # Semua endpoint API di bawah prefix 'api/
     path('api/orders/', include('orders.urls')),

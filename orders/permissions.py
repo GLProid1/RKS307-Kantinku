@@ -31,11 +31,8 @@ class IsGuestOrderOwner(permissions.BasePermission):
 
     def has_object_permission(self, request, view, obj):
         # 1. AMBIL TOKEN (Prioritas Utama untuk Guest)
-        token = (
-            request.query_params.get('token') or 
-            request.data.get('token') or 
-            request.GET.get('token')
-        )
+        # TOKEN DIAMBIL DARI HEADER ATAU BODY, BUKAN DARI URL
+        token = request.headers.get('X-Order-Token') or request.data.get('token')
         
         if token:
             expected_token = self.generate_order_token(str(obj.uuid))

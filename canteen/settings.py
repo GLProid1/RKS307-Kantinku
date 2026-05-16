@@ -75,14 +75,17 @@ REST_FRAMEWORK = {
     ],
     'DEFAULT_THROTTLE_CLASSES': [
        'rest_framework.throttling.AnonRateThrottle',
-        'rest_framework.throttling.UserRateThrottle'
+        'rest_framework.throttling.UserRateThrottle',
+        'rest_framework.throttling.ScopedRateThrottle',
     ],
     'DEFAULT_THROTTLE_RATES': {
         'anon': '200/hour',      # Batas untuk user tanpa login (secara global)
         'user': '1000/day',    # Batas untuk user yang sudah login
         'burst': '60/minute',   # Batas cepat untuk aksi sensitif
         'sustained': '1000/day',
+        'webhook': '60/minute',
     },
+    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
 }
 
 SIMPLE_JWT = {
@@ -95,6 +98,12 @@ SIMPLE_JWT = {
 
 CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/0")
 CELERY_RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND", "redis://localhost:6379/1")
+CELERY_BEAT_SCHEDULE = {
+    'check_expired_orders_every_minute': {
+        'task': 'orders.tasks.process_expired_orders', # <--- Pastikan nama ini sama persis dengan yang di tasks.py
+        'schedule': 60.0,
+    },
+}
 
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',

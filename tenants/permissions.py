@@ -17,20 +17,13 @@ class IsTenantStaff(permissions.BasePermission):
             tenant = obj.tenant
         
         if tenant:
-            # --- MULAI DEBUG PRINT (Cek Log Docker Nanti) ---
-            print(f"--- DEBUG PERMISSION ---")
-            print(f"User Login: {request.user} (ID: {request.user.id})")
-            print(f"Target Tenant: {tenant.name} (ID: {tenant.id})")
+            
             
             # Cek apakah user ada di list staff
             is_member = tenant.staff.filter(pk=request.user.pk).exists()
             
             # Print semua staff yang terdaftar di tenant ini
-            all_staff = list(tenant.staff.all().values_list('username', flat=True))
-            print(f"Daftar Staff di Database: {all_staff}")
-            print(f"Apakah User Member? {is_member}")
-            print(f"------------------------")
-            # --- SELESAI DEBUG ---
+            
 
             return is_member
         

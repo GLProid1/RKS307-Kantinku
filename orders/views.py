@@ -15,7 +15,7 @@ from django.contrib.auth.models import User, Group
 from rest_framework import status, permissions, generics, viewsets, serializers
 from rest_framework.authentication import TokenAuthentication
 from rest_framework.permissions import IsAuthenticated
-
+from rest_framework.throttling import ScopedRateThrottle
 from decimal import Decimal
 from rest_framework.throttling import AnonRateThrottle
 
@@ -105,13 +105,12 @@ class PopularMenusView(generics.ListAPIView):
         
         return sorted_items
 
-class CreateOrderBurstThrottle(AnonRateThrottle):
-    scope = 'burst'
-    rate = '5/minute'
+
 
 class CreateOrderView(APIView):
   permission_classes = [permissions.AllowAny]
-  throttle_classes = [CreateOrderBurstThrottle]
+  throttle_classes = [ScopedRateThrottle] # Gunakan Scoped global
+  throttle_scope = 'burst'
 
   def post(self, request):
     serializer = OrderCreateSerializer(data=request.data)
@@ -260,13 +259,12 @@ class CreateOrderView(APIView):
 
 
 security_logger = logging.getLogger('security')
-class WebhookRateThrottle(AnonRateThrottle):
-    scope = 'webhook'
-    rate = '60/minute'
+
     
 class MidtransWehboohView(APIView):
     permission_classes = [permissions.AllowAny]
-    throttle_classes = [WebhookRateThrottle] # Batasi spam rate
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'webhook' # Batasi spam rate
 
     def post(self, request):
         payload = request.data
@@ -412,6 +410,8 @@ class UpdateOrderStatusView(APIView):
   
 class OrderCreateView(generics.CreateAPIView):
     serializer_class = OrderCreateSerializer
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'burst'
 
     @transaction.atomic
     def create(self, request, *args, **kwargs):
@@ -462,11 +462,13 @@ class OrderListView(generics.ListAPIView):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        user = self.request.user
-        Order.objects.filter(
-            status='AWAITING_PAYMENT',
-            expired_at__lt=timezone.now()
-        ).update(status='EXPIRED')
+
+        #user = self.request.user
+        #Order.objects.filter(
+        #    status='AWAITING_PAYMENT',
+        #    expired_at__lt=timezone.now()
+        #).update(status='EXPIRED')
+        
         base_qs = Order.objects.all()
 
         # --- PERBAIKAN LOGIKA IZIN ---

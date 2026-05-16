@@ -43,18 +43,18 @@ class Order(models.Model):
   ]
   PAYMENT_METHOD_CHOICES = [('CASH', 'Cash'), ('TRANSFER', 'Transfer')]
   
-  uuid = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
+  uuid = models.UUIDField(default=uuid.uuid4, editable=False, unique=True, db_index=True)
   references_code = models.CharField(max_length=50, default=generate_references_code, unique=True, db_index=True)
   cashier_pin = models.CharField(max_length=255, blank=True, null=True, help_text="PIN (Hashed) untuk konfirmasi kasir")
   table = models.ForeignKey(Table, on_delete=models.SET_NULL, null=True, blank=True)
   tenant = models.ForeignKey(Tenant, on_delete=models.PROTECT, related_name='orders')
   customer = models.ForeignKey(Customer, on_delete=models.SET_NULL, null=True, blank=True)
-  status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='AWAITING_PAYMENT')
+  status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='AWAITING_PAYMENT',db_index=True)
   order_type = models.CharField(max_length=10, choices=ORDER_TYPE_CHOICES, default='DINE_IN')
   expired_at = models.DateTimeField(null=True, blank=True)
   payment_method = models.CharField(max_length=20, choices=PAYMENT_METHOD_CHOICES)
   total = models.DecimalField(max_digits=14, decimal_places=2, default=0)
-  created_at = models.DateTimeField(auto_now_add=True)
+  created_at = models.DateTimeField(auto_now_add=True, db_index=True)
   paid_at = models.DateTimeField(null=True, blank=True)
   meta = models.JSONField(default=dict, blank=True)
   

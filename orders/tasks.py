@@ -115,3 +115,25 @@ def cleanup_old_webhook_logs():
     retention_date = timezone.now() - timedelta(days=90)
     deleted_count, _ = PaymentWebhookLog.objects.filter(created_at__lt=retention_date).delete()
     return f"Deleted {deleted_count} old webhook logs."
+
+@shared_task
+def process_expired_orders():
+    """
+    Mengecek order yang AWAITING_PAYMENT dan sudah melewati waktu expired_at.
+    Lalu mengubah statusnya menjadi EXPIRED dan mengembalikan stok.
+    """
+    expired_orders = Order.objects.filter(
+        status='AWAITING_PAYMENT',
+        expired_at__lt=timezone.now()
+    )
+    
+    count = 0
+    for order in expired_orders:
+        order.status = 'EXPIRED'
+        order.save(update_fields=['status'])
+        
+        # Penting: kembalikan stok menu yang tadinya di-reserve
+        order.cancel_and_restock() 
+        count += 1
+        
+    return f"{count} pesanan berhasil di-expired dan stok dikembalikan."

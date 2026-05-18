@@ -1,4 +1,5 @@
 from django.db import models
+from django.db.models import Sum, F, DecimalField
 from django.utils import timezone
 from datetime import timedelta
 from django.db import transaction
@@ -60,16 +61,31 @@ class Order(models.Model):
   
   class Meta:
     ordering = ['-created_at']
+    # [PERBAIKAN COMPOSITE INDEX]: Tambahkan index gabungan untuk status dan created_at
+    indexes = [
+        models.Index(fields=['status', 'created_at']),
+    ]
     
   def __str__(self):
     return f"{self.references_code} ({self.tenant.name})"
   
   def calculate_total(self):
-    total = sum([item.price * item.qty for item in self.items.all()])
-    self.total = total
-    self.save(update_fields=['total'])
+    aggregated = self.items.aggregate(
+      calculated_total=Sum(
+        F('price') * F('qty'),
+        output_field=DecimalField(max_digits=14, decimal_places=2)
+      )
+    )
+        
+    new_total = aggregated['calculated_total'] or 0
+        
+        # Point 6: Gunakan update() ketimbang save() agar lebih ringan 
+        # dan tidak memicu sinyal pre_save/post_save yang tidak perlu
+    Order.objects.filter(pk=self.pk).update(total=new_total)
+    self.total = new_total # Update instance di memori agar tetap sinkron
+        
     return self.total
-
+  
   def cancel_and_restock(self):
     if self.status not in ['AWAITING_PAYMENT', 'EXPIRED']:
       return False

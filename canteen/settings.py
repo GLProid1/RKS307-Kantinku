@@ -85,7 +85,7 @@ REST_FRAMEWORK = {
         'sustained': '1000/day',
         'webhook': '60/minute',
     },
-    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    'DEFAULT_PAGINATION_CLASS': 'canteen.pagination.DefaultPagination',
 }
 
 SIMPLE_JWT = {
@@ -297,4 +297,17 @@ LOGGING = {
         'security.audit': {'handlers': ['security_file'], 'level': 'INFO', 'propagate': True},
         'axes': {'handlers': ['security_file'], 'level': 'INFO', 'propagate': True}
     },
+}
+
+CACHES = {
+    'default': {
+        'BACKEND': 'django_redis.cache.RedisCache',
+        'LOCATION': os.getenv("REDIS_URL_CACHE", "redis://127.0.0.1:6379/2"), # Database 2 khusus Cache
+        'OPTIONS': {
+            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+            # Menggunakan kompresi zlib agar data JSON besar dari Dashboard 
+            # tidak membuat RAM Redis cepat penuh
+            'COMPRESSOR': 'django_redis.compressors.zlib.ZlibCompressor', 
+        }
+    }
 }

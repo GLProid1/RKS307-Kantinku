@@ -7,4 +7,4 @@ class DefaultPagination(PageNumberPagination):
     # INI YANG PALING PENTING - Hard limit untuk mencegah server kehabisan RAM
     # Walaupun user mengirim /api/orders/?page_size=999999,
     # server hanya akan membalas maksimal 50 baris data.
-    max_page_size = 50
+    max_page_size = 100

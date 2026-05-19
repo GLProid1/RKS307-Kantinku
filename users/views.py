@@ -9,7 +9,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.decorators import action
 from rest_framework_simplejwt.tokens import RefreshToken, OutstandingToken, BlacklistedToken
-from rest_framework_simplejwt.views import TokenRefreshView
+from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from rest_framework.throttling import AnonRateThrottle, UserRateThrottle
 from axes.helpers import get_client_ip_address
 from rest_framework_simplejwt.serializers import TokenRefreshSerializer
@@ -100,26 +100,65 @@ class LoginView(APIView):
         )
         return response
 
-
-class CustomTokenRefreshView(TokenRefreshView):
-    throttle_classes = [AnonRateThrottle, UserRateThrottle]
-
+class CookieTokenObtainPairView(TokenObtainPairView):
+    """
+    View khusus untuk Login. Mengembalikan access_token di JSON,
+    tapi melempar refresh_token ke HttpOnly Cookie.
+    """
     def post(self, request, *args, **kwargs):
+        response = super().post(request, *args, **kwargs)
+        
+        if response.status_code == 200:
+            refresh_token = response.data.get('refresh')
+            
+            # SECURE CODING: Set ke HttpOnly Cookie
+            response.set_cookie(
+                key='refresh_token',
+                value=refresh_token,
+                httponly=True,
+                secure=settings.SESSION_COOKIE_SECURE, # True di Production
+                samesite='Lax',
+                max_age=24 * 60 * 60 # 1 hari (sesuai setting SimpleJWT)
+            )
+            
+            # Hapus refresh dari body JSON agar JS frontend tidak bisa membacanya
+            if 'refresh' in response.data:
+                del response.data['refresh']
+                
+        return response
+
+class CookieTokenRefreshView(TokenRefreshView):
+    """
+    View khusus untuk Refresh. Mengambil refresh_token dari Cookie,
+    bukan dari body JSON.
+    """
+    def post(self, request, *args, **kwargs):
+        # Ambil token dari cookie
         refresh_token = request.COOKIES.get('refresh_token')
         
-        # Buat copy dari request.data agar bisa disisipi token dari Cookie
-        data = request.data.copy() if hasattr(request.data, 'copy') else dict(request.data)
-        
-        if refresh_token and 'refresh' not in data:
+        if refresh_token:
+            # Karena request.data di DRF bisa immutable, kita buat salinan mutable
+            data = request.data.copy() if hasattr(request.data, 'copy') else request.data
             data['refresh'] = refresh_token
+            request._full_data = data # Inject data yang sudah ditambahkan refresh token
             
-        serializer = TokenRefreshSerializer(data=data)
-        try:
-            serializer.is_valid(raise_exception=True)
-        except TokenError as e:
-            raise InvalidToken(e.args[0])
+        response = super().post(request, *args, **kwargs)
+        
+        # Jika ROTATE_REFRESH_TOKENS = True, backend akan men-generate refresh token baru.
+        # Kita harus update cookie-nya.
+        if response.status_code == 200 and 'refresh' in response.data:
+            response.set_cookie(
+                key='refresh_token',
+                value=response.data.get('refresh'),
+                httponly=True,
+                secure=settings.SESSION_COOKIE_SECURE,
+                samesite='Lax',
+                max_age=24 * 60 * 60
+            )
+            del response.data['refresh']
             
-        return Response(serializer.validated_data, status=status.HTTP_200_OK)
+        return response
+    
 
 
 class LogoutView(APIView):

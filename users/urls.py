@@ -3,7 +3,7 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import (
     UserViewSet, LoginView, LogoutView, CheckAuthView, 
-    EditView, ChangePasswordView, CustomTokenRefreshView
+    EditView, ChangePasswordView, CookieTokenRefreshView
 )
 
 app_name = 'users'
@@ -19,7 +19,6 @@ urlpatterns = [
     path('change-password/', ChangePasswordView.as_view(), name='change-password'),
 
     # URL Refresh Token JWT Baru
-    path('token/refresh/', CustomTokenRefreshView.as_view(), name='token_refresh'),
-
+    path('token/refresh/', CookieTokenRefreshView.as_view(), name='token_refresh'),
     path('', include(router.urls)),
 ]

@@ -47,3 +47,51 @@ INFO 2026-05-18 12:35:31,425 apps AXES: BEGIN version 8.3.1, blocking by usernam
 INFO 2026-05-18 12:36:17,846 apps AXES: BEGIN version 8.3.1, blocking by username or ip_address
 INFO 2026-05-18 12:36:22,366 apps AXES: BEGIN version 8.3.1, blocking by username or ip_address
 INFO 2026-05-18 12:37:56,450 apps AXES: BEGIN version 8.3.1, blocking by username or ip_address
+INFO 2026-05-20 19:54:23,598 apps AXES: BEGIN version 8.3.1, blocking by username or ip_address
+INFO 2026-05-20 19:54:27,015 apps AXES: BEGIN version 8.3.1, blocking by username or ip_address
+INFO 2026-05-20 19:54:27,015 apps AXES: BEGIN version 8.3.1, blocking by username or ip_address
+INFO 2026-05-20 19:54:27,023 apps AXES: BEGIN version 8.3.1, blocking by username or ip_address
+INFO 2026-05-20 19:54:27,023 apps AXES: BEGIN version 8.3.1, blocking by username or ip_address
+INFO 2026-05-20 19:54:27,060 apps AXES: BEGIN version 8.3.1, blocking by username or ip_address
+INFO 2026-05-20 19:54:27,078 apps AXES: BEGIN version 8.3.1, blocking by username or ip_address
+INFO 2026-05-20 19:54:27,080 apps AXES: BEGIN version 8.3.1, blocking by username or ip_address
+INFO 2026-05-20 19:54:27,081 apps AXES: BEGIN version 8.3.1, blocking by username or ip_address
+INFO 2026-05-20 19:54:27,081 apps AXES: BEGIN version 8.3.1, blocking by username or ip_address
+INFO 2026-05-20 19:54:27,084 apps AXES: BEGIN version 8.3.1, blocking by username or ip_address
+INFO 2026-05-20 19:54:27,086 apps AXES: BEGIN version 8.3.1, blocking by username or ip_address
+INFO 2026-05-20 19:54:27,103 apps AXES: BEGIN version 8.3.1, blocking by username or ip_address
+INFO 2026-05-20 19:54:27,131 apps AXES: BEGIN version 8.3.1, blocking by username or ip_address
+INFO 2026-05-20 19:54:27,134 apps AXES: BEGIN version 8.3.1, blocking by username or ip_address
+INFO 2026-05-20 19:54:27,160 apps AXES: BEGIN version 8.3.1, blocking by username or ip_address
+INFO 2026-05-20 19:54:27,176 apps AXES: BEGIN version 8.3.1, blocking by username or ip_address
+INFO 2026-05-20 19:54:29,690 apps AXES: BEGIN version 8.3.1, blocking by username or ip_address
+INFO 2026-05-20 19:54:29,690 apps AXES: BEGIN version 8.3.1, blocking by username or ip_address
+INFO 2026-05-20 19:54:29,702 apps AXES: BEGIN version 8.3.1, blocking by username or ip_address
+INFO 2026-05-20 19:54:29,707 apps AXES: BEGIN version 8.3.1, blocking by username or ip_address
+INFO 2026-05-20 19:54:31,703 apps AXES: BEGIN version 8.3.1, blocking by username or ip_address
+INFO 2026-05-20 19:54:34,024 apps AXES: BEGIN version 8.3.1, blocking by username or ip_address
+INFO 2026-05-20 19:55:26,907 apps AXES: BEGIN version 8.3.1, blocking by username or ip_address
+INFO 2026-05-20 19:55:28,175 apps AXES: BEGIN version 8.3.1, blocking by username or ip_address
+INFO 2026-05-20 19:56:05,274 apps AXES: BEGIN version 8.3.1, blocking by username or ip_address
+INFO 2026-05-20 19:58:52,880 apps AXES: BEGIN version 8.3.1, blocking by username or ip_address
+INFO 2026-05-20 19:58:59,314 apps AXES: BEGIN version 8.3.1, blocking by username or ip_address
+INFO 2026-05-20 19:59:07,301 apps AXES: BEGIN version 8.3.1, blocking by username or ip_address
+INFO 2026-05-20 19:59:15,498 apps AXES: BEGIN version 8.3.1, blocking by username or ip_address
+INFO 2026-05-20 19:59:23,938 apps AXES: BEGIN version 8.3.1, blocking by username or ip_address
+INFO 2026-05-20 19:59:36,170 apps AXES: BEGIN version 8.3.1, blocking by username or ip_address
+INFO 2026-05-20 19:59:39,823 apps AXES: BEGIN version 8.3.1, blocking by username or ip_address
+INFO 2026-05-20 19:59:47,455 apps AXES: BEGIN version 8.3.1, blocking by username or ip_address
+INFO 2026-05-20 19:59:54,117 apps AXES: BEGIN version 8.3.1, blocking by username or ip_address
+INFO 2026-05-20 19:59:55,030 apps AXES: BEGIN version 8.3.1, blocking by username or ip_address
+INFO 2026-05-20 19:59:59,949 views [AUTH SUCCESS] User: poli logged in successfully from IP: 127.0.0.1
+INFO 2026-05-20 20:05:00,696 views [MFA ENABLED] User: poli successfully enabled MFA.
+INFO 2026-05-20 20:06:02,585 views [MFA REQUIRED] User: poli needs to provide OTP from IP: 127.0.0.1
+WARNING 2026-05-20 20:07:10,515 views [MFA FAILED] User: poli failed OTP verification from IP: 127.0.0.1
+INFO 2026-05-20 20:07:28,950 views [AUTH SUCCESS] User: poli logged in successfully from IP: 127.0.0.1
+INFO 2026-05-20 20:13:42,719 apps AXES: BEGIN version 8.3.1, blocking by username or ip_address
+INFO 2026-05-20 21:45:36,215 views [MFA REQUIRED] User: poli needs to provide OTP from IP: 127.0.0.1
+INFO 2026-05-20 21:45:59,798 views [AUTH SUCCESS] User: poli logged in successfully from IP: 127.0.0.1
+INFO 2026-05-20 22:00:33,204 database AXES: User login failed, running database handler for failure.
+INFO 2026-05-20 22:00:33,224 database AXES: Cleaned up 4 expired access attempts from database that were older than 2026-05-20 14:00:32.480372+00:00
+WARNING 2026-05-20 22:00:33,236 database AXES: New login failure by {username: "********************", ip_address: "********************", user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36", path_info: "/api/users/login/"}. Created new record in the database.
+WARNING 2026-05-20 22:00:33,242 views [AUTH FAILED] Login attempt/lockout for user: Poli from IP: 127.0.0.1

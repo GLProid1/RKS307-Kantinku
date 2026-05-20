@@ -396,7 +396,11 @@ class UpdateOrderStatusView(APIView):
         new_status = request.data.get('status')
         if not new_status:
             return Response({"detail": "Field 'status' diperlukan"}, status=status.HTTP_400_BAD_REQUEST)
-        
+        if new_status == 'PAID' and order.payment_method == 'TRANSFER':
+            return Response(
+                {"detail": "Pesanan Transfer hanya bisa diubah menjadi LUNAS secara otomatis oleh Midtrans."}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
         current_status = order.status
         allowed_next_statues = self.VALID_TRANSITIONS.get(current_status)
         

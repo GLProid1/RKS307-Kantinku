@@ -1,4 +1,13 @@
 import logging
+import pyotp
+import qrcode
+import base64
+from io import BytesIO
+import random
+import string
+from .models import UserMFA, BackupCode
+from django.core.signing import TimestampSigner, SignatureExpired, BadSignature
+from django.contrib.auth.hashers import make_password, check_password
 from datetime import timedelta
 from django.conf import settings
 from django.contrib.auth.models import User
@@ -18,6 +27,7 @@ from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 from .serializers import UserSerializer, UserCreateSerializer, UpdateUserSerializer, ChangePasswordSerializer
 from .permissions import IsAdminUser, IsAdminOrSelf
 
+mfa_signer = TimestampSigner()
 # Inisialisasi Audit Logger
 audit_logger = logging.getLogger('security.audit')
 
@@ -60,7 +70,7 @@ class UserViewSet(viewsets.ModelViewSet):
 
 class LoginView(APIView):
     permission_classes = [AllowAny]
-    throttle_classes = [AnonRateThrottle] # Rate limiting untuk cegah brute-force IP
+    throttle_classes = [AnonRateThrottle]
 
     def post(self, request):
         username = request.data.get("username")
@@ -73,15 +83,30 @@ class LoginView(APIView):
             audit_logger.warning(f"[AUTH FAILED] Login attempt/lockout for user: {username} from IP: {client_ip}")
             return Response({"detail": "Username/password salah atau akun terkunci."}, status=status.HTTP_401_UNAUTHORIZED)
 
-        # Gunakan JWT Refresh Token
-        refresh = RefreshToken.for_user(user)
+        # CEK APAKAH MFA AKTIF
+        if hasattr(user, 'usermfa') and user.usermfa.is_enabled:
+            # Buat token sementara yang valid selama 5 menit (300 detik)
+            temp_token = mfa_signer.sign_object({'user_id': user.id})
+            audit_logger.info(f"[MFA REQUIRED] User: {username} needs to provide OTP from IP: {client_ip}")
+            
+            return Response({
+                "detail": "MFA Required. Silakan masukkan kode OTP.",
+                "mfa_required": True,
+                "temp_token": temp_token
+            }, status=status.HTTP_200_OK)
+
+        # JIKA MFA TIDAK AKTIF, LAKUKAN LOGIN NORMAL SEPERTI BIASA
+        return self._generate_jwt_response(user, client_ip)
         
+    def _generate_jwt_response(self, user, client_ip):
+        """Helper method untuk generate JWT (Bisa dipakai juga nanti setelah lolos MFA)"""
+        refresh = RefreshToken.for_user(user)
         role = 'customer'
         if user.groups.filter(name__iexact='Cashier').exists(): role = 'cashier'
         elif user.groups.filter(name__iexact='Seller').exists(): role = 'seller'
         elif user.groups.filter(name__iexact='Admin').exists(): role = 'admin'
 
-        audit_logger.info(f"[AUTH SUCCESS] User: {username} logged in successfully from IP: {client_ip}")
+        audit_logger.info(f"[AUTH SUCCESS] User: {user.username} logged in successfully from IP: {client_ip}")
 
         response = Response({
             "access": str(refresh.access_token),
@@ -89,16 +114,124 @@ class LoginView(APIView):
             "message": "Login berhasil"
         }, status=status.HTTP_200_OK)
 
-        # Set Refresh Token ke HttpOnly Cookie
         response.set_cookie(
-            key='refresh_token',
-            value=str(refresh),
-            httponly=True,
-            secure=settings.SESSION_COOKIE_SECURE,
-            samesite='Lax',
-            max_age=timedelta(days=1)
+            key='refresh_token', value=str(refresh), httponly=True,
+            secure=settings.SESSION_COOKIE_SECURE, samesite='Lax', max_age=timedelta(days=1)
         )
         return response
+class VerifyMFALoginView(APIView):
+    permission_classes = [AllowAny]
+    throttle_classes = [AnonRateThrottle] # Mencegah Brute Force kode OTP
+
+    def post(self, request):
+        temp_token = request.data.get('temp_token')
+        otp_code = request.data.get('otp_code')
+        client_ip = get_client_ip_address(request)
+
+        if not temp_token or not otp_code:
+            return Response({"detail": "Token sementara dan OTP wajib diisi."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            # Unsign data, maksimal umur token 5 menit (300 detik)
+            data = mfa_signer.unsign_object(temp_token, max_age=300)
+            user = User.objects.get(id=data['user_id'])
+        except (SignatureExpired, BadSignature):
+            return Response({"detail": "Token kadaluarsa atau tidak valid. Silakan login ulang."}, status=status.HTTP_401_UNAUTHORIZED)
+        except User.DoesNotExist:
+            return Response({"detail": "User tidak ditemukan."}, status=status.HTTP_404_NOT_FOUND)
+
+        mfa = user.usermfa
+        totp = pyotp.TOTP(mfa.secret_key)
+
+        # 1. Cek apakah itu kode OTP dari Authenticator
+        is_valid = totp.verify(otp_code)
+
+        # 2. Jika bukan OTP, cek apakah itu Backup Code
+        if not is_valid:
+            for backup in mfa.backup_codes.filter(is_used=False):
+                if check_password(otp_code, backup.code_hash):
+                    is_valid = True
+                    backup.is_used = True # Tandai backup code sudah dipakai
+                    backup.save()
+                    audit_logger.info(f"[MFA BACKUP USED] User: {user.username} logged in using backup code.")
+                    break
+
+        if is_valid:
+            # Sukses lolos MFA, generate Token Sesungguhnya
+            login_view = LoginView()
+            return login_view._generate_jwt_response(user, client_ip)
+        else:
+            audit_logger.warning(f"[MFA FAILED] User: {user.username} failed OTP verification from IP: {client_ip}")
+            return Response({"detail": "Kode OTP atau Backup Code salah."}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class GenerateMFASetupView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        user = request.user
+        mfa, created = UserMFA.objects.get_or_create(user=user)
+        
+        # Selalu generate secret baru saat setup ulang
+        secret = mfa.generate_secret()
+        mfa.is_enabled = False # Jangan aktifkan dulu sebelum di-verify
+        mfa.save()
+
+        # Generate URI untuk aplikasi Authenticator
+        totp = pyotp.TOTP(secret)
+        uri = totp.provisioning_uri(name=user.email or user.username, issuer_name='Kantinku App')
+
+        # Generate QR Code Image dalam Base64
+        qr = qrcode.make(uri)
+        buffer = BytesIO()
+        qr.save(buffer, format="PNG")
+        qr_base64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
+
+        return Response({
+            "detail": "Silakan scan QR Code ini dengan Google/Microsoft Authenticator Anda.",
+            "qr_code_base64": f"data:image/png;base64,{qr_base64}",
+            "secret_key": secret # Opsional: Diberikan jika user ingin input manual di HP
+        })
+
+
+class VerifyMFASetupView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        user = request.user
+        otp_code = request.data.get('otp_code')
+        
+        try:
+            mfa = user.usermfa
+        except UserMFA.DoesNotExist:
+            return Response({"detail": "Silakan generate MFA terlebih dahulu."}, status=status.HTTP_400_BAD_REQUEST)
+
+        totp = pyotp.TOTP(mfa.secret_key)
+        
+        if totp.verify(otp_code):
+            # OTP Benar, Aktifkan MFA!
+            mfa.is_enabled = True
+            mfa.save()
+
+            # Hapus backup code lama (jika ada) dan buat 5 backup code baru
+            mfa.backup_codes.all().delete()
+            raw_backup_codes = []
+            
+            for _ in range(5):
+                # Generate 8 karakter random (huruf besar + angka)
+                code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
+                raw_backup_codes.append(code)
+                BackupCode.objects.create(mfa=mfa, code_hash=make_password(code))
+
+            audit_logger.info(f"[MFA ENABLED] User: {user.username} successfully enabled MFA.")
+
+            return Response({
+                "detail": "MFA berhasil diaktifkan!",
+                "backup_codes": raw_backup_codes,
+                "warning": "SIMPAN BACKUP CODES INI DI TEMPAT AMAN! Hanya ditampilkan 1 kali."
+            }, status=status.HTTP_200_OK)
+            
+        return Response({"detail": "Kode OTP tidak valid."}, status=status.HTTP_400_BAD_REQUEST)
 
 class CookieTokenObtainPairView(TokenObtainPairView):
     """

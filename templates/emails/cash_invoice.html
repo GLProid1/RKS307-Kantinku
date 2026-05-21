@@ -1,55 +1,43 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Instruksi Pembayaran Pesanan Anda</title>
-  <style>
-    body {
-      font-family: sans-serif; color: #333;
-    }
-    .container {
-      max-width: 600px; margin: 20px auto; padding: 20px; border: 1px solid #ddd; border-radius: 8px;
-    }
-    .header {
-      text-align: center; border-bottom: 1px solid #ddd; padding-bottom: 10px; margin-bottom: 20px;
-    }
-    .pin-box {background-color: #f0f0f0; border: 2px dashed #ccc; padding: 20px; text-align: center; margin: 20px 0; 
-    }
-    .pin-code {
-      font-size: 12px; text-align: center; color: #777; margin-top: 20px;
-    }
-    .footer {
-      font-size: 12px; text-align: center; color: #777; margin-top: 20px;
-    }
-  </style>
+    <meta charset="UTF-8">
+    <style>
+        .button {
+            background-color: #ea580c;
+            color: white;
+            padding: 12px 24px;
+            text-decoration: none;
+            border-radius: 6px;
+            display: inline-block;
+            font-weight: bold;
+        }
+    </style>
 </head>
-<body>
-  <div class="container">
-    <div class="header">
-      <h2>Terimakasih telah memesan di {{ tenant_name }}!</h2>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #374151; margin: 0; padding: 20px;">
+    <div style="max-width: 600px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 12px; padding: 30px; background-color: #ffffff;">
+        <h1 style="color: #1f2937; margin-top: 0;">Halo, {{ order.customer.username }}!</h1>
+        <p>Terima kasih telah berbelanja di <strong>{{ tenant_name }}</strong>.</p>
+        
+        <div style="background-color: #fff7ed; border-left: 4px solid #ea580c; padding: 15px; margin: 20px 0;">
+            <p style="margin: 0; font-size: 14px;">Gunakan PIN berikut untuk memproses pembayaran di kasir:</p>
+            <p style="margin: 5px 0; font-size: 28px; font-weight: bold; color: #ea580c; letter-spacing: 2px;">{{ pin }}</p>
+        </div>
+
+        <p><strong>Detail Pesanan #{{ order.references_code }}</strong></p>
+        <ul style="padding-left: 20px;">
+            {% for item in order.items.all %}
+            <li>{{ item.menu.name }} x {{ item.quantity }}</li>
+            {% endfor %}
+        </ul>
+
+        <p style="margin-top: 30px;">
+            <a href="https://kantinku.com/orders/{{ order.pk }}" class="button">Lihat Status Pesanan</a>
+        </p>
+
+        <p style="font-size: 12px; color: #9ca3af; margin-top: 40px; border-top: 1px solid #e5e7eb; padding-top: 10px;">
+            Pesan ini dikirim otomatis oleh sistem KantinKu. Mohon untuk tidak membalas email ini.
+        </p>
     </div>
-    <p>Halo,</p>
-    <p>Pesanan Anda dengan nomor referensi <strong>#{{ order.references_code }}</strong> telah kami terima. Silahkan lakukan pembayaran tunai di kasir dengan menunjukkan PIN di bawah ini</p>
-
-    <div class="pin-box">
-      <p style="margin-top:0;">PIN PEMBAYARAN ANDA</p>
-      <div class="pin-code">{{ pin }}</div>
-    </div>
-
-    <h3>Detail Pesanan:</h3>
-    <ul>
-      {% for item in order.items.all %}
-        <li>{{ item.menu_item.name }} (x{{ item.qty }})</li>
-      {% endfor %}
-    </ul>
-    <p><strong>Total Pembayaran: Rp. {{ order.total|floatformat:2 }}</strong></p>
-
-    <p>Terimas kasih!</p>
-
-    <div class="footer">
-      <p>Ini adalah email yang dibuat secara otomatis. Mohon untuk tidak membalas email ini.</p>
-    </div>
-  </div>
 </body>
 </html>

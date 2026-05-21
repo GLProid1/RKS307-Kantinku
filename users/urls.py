@@ -4,7 +4,7 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     UserViewSet, LoginView, LogoutView, CheckAuthView, 
     EditView, ChangePasswordView, CookieTokenRefreshView,
-    VerifyMFALoginView, GenerateMFASetupView, VerifyMFASetupView
+    VerifyMFALoginView, GenerateMFASetupView, VerifyMFASetupView,
 )
 
 app_name = 'users'
@@ -22,8 +22,8 @@ urlpatterns = [
     path('check-auth/', CheckAuthView.as_view(), name='check-auth'),
     path('edit-profile/', EditView.as_view(), name='edit-profile'),
     path('change-password/', ChangePasswordView.as_view(), name='change-password'),
-
     # URL Refresh Token JWT Baru
     path('token/refresh/', CookieTokenRefreshView.as_view(), name='token_refresh'),
     path('', include(router.urls)),
+    
 ]

@@ -51,14 +51,17 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt.token_blacklist', # Penting untuk fitur logout
     'axes',
     'templates',
+    'anymail',
 ]
 
-EMAIL_BACKEND = os.getenv("EMAIL_BACKEND", 'django.core.mail.backends.smtp.EmailBackend')
-EMAIL_HOST = os.getenv("EMAIL_HOST")
-EMAIL_PORT = os.getenv("EMAIL_PORT", 587)
-EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", 'True') == 'True'
-EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER")
-EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD")
+# 2. Ganti blok konfigurasi EMAIL Anda yang lama dengan ini:
+EMAIL_BACKEND = "anymail.backends.resend.EmailBackend"
+ANYMAIL = {
+    "RESEND_API_KEY": os.getenv("RESEND_API_KEY"),
+}
+
+# (Opsional) Set default email pengirim jika tidak didefinisikan saat mengirim
+DEFAULT_FROM_EMAIL = "Admin KantinKu <onboarding@resend.dev>"
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [

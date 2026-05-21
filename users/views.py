@@ -24,6 +24,7 @@ from axes.helpers import get_client_ip_address
 from rest_framework_simplejwt.serializers import TokenRefreshSerializer
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 
+from django.core.mail import send_mail
 from .serializers import UserSerializer, UserCreateSerializer, UpdateUserSerializer, ChangePasswordSerializer
 from .permissions import IsAdminUser, IsAdminOrSelf
 
@@ -386,3 +387,31 @@ class CheckAuthView(APIView):
             "user": {**UserSerializer(user).data, "role": role},
             "message": "Pengguna terautentikasi"
         }, status=status.HTTP_200_OK)
+<<<<<<< HEAD
+=======
+    
+
+class TestEmailView(APIView):
+    # Mengizinkan akses tanpa perlu token Bearer (khusus untuk test)
+    permission_classes = [AllowAny] 
+
+    def post(self, request):
+        email_tujuan = request.data.get("email")
+
+        if not email_tujuan:
+            return Response({"detail": "Key 'email' wajib diisi di dalam JSON body."}, status=400)
+
+        try:
+            # Fungsi bawaan Django ini akan otomatis diteruskan ke Resend via Anymail
+            send_mail(
+                subject="Test Integrasi Resend - KantinKu",
+                message="Halo! Jika Anda melihat email ini, berarti Resend sudah sukses terhubung dengan Django.",
+                from_email="onboarding@resend.dev",  # WAJIB gunakan ini jika domain Anda belum diverifikasi di Resend
+                recipient_list=[email_tujuan],
+                fail_silently=False,
+            )
+            return Response({"detail": f"Email sukses dikirim ke {email_tujuan}"}, status=200)
+        
+        except Exception as e:
+            return Response({"detail": f"Gagal mengirim email: {str(e)}"}, status=500)
+>>>>>>> dddcb58 ( cihuy)

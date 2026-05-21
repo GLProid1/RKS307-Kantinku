@@ -102,9 +102,16 @@ class LoginView(APIView):
         """Helper method untuk generate JWT (Bisa dipakai juga nanti setelah lolos MFA)"""
         refresh = RefreshToken.for_user(user)
         role = 'customer'
-        if user.groups.filter(name__iexact='Cashier').exists(): role = 'cashier'
-        elif user.groups.filter(name__iexact='Seller').exists(): role = 'seller'
-        elif user.groups.filter(name__iexact='Admin').exists(): role = 'admin'
+        
+        # --- PERBAIKAN DI SINI ---
+        # Tambahkan pengecekan user.is_superuser
+        if user.is_superuser or user.groups.filter(name__iexact='Admin').exists(): 
+            role = 'admin'
+        elif user.groups.filter(name__iexact='Seller').exists(): 
+            role = 'seller'
+        elif user.groups.filter(name__iexact='Cashier').exists(): 
+            role = 'cashier'
+        # -------------------------
 
         audit_logger.info(f"[AUTH SUCCESS] User: {user.username} logged in successfully from IP: {client_ip}")
 

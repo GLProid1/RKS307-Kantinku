@@ -28,37 +28,45 @@ class UserSerializer(serializers.ModelSerializer):
 
 class UserCreateSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True)
-    role = serializers.ChoiceField(choices=['Admin', 'Seller', 'Cashier'], write_only=True)
+    # 1. Ganti ChoiceField menjadi CharField biasa
+    role = serializers.CharField(write_only=True)
     
     class Meta:
         model = User
         fields = ['username', 'email', 'password', 'role']
 
+    # 2. Tambahkan fungsi validasi khusus untuk kolom 'role'
+    def validate_role(self, value):
+        valid_roles = ['admin', 'seller', 'cashier']
+        
+        # Cek apakah input (yang sudah diubah ke huruf kecil) ada di daftar valid
+        if value.lower() not in valid_roles:
+            raise serializers.ValidationError(f"'{value}' bukan pilihan role yang valid.")
+            
+        # Kembalikan nilai dengan huruf depan kapital (contoh: 'admin' jadi 'Admin')
+        return value.capitalize()
+
     def create(self, validated_data):
-        # Gunakan transaction atomic agar jika pembuatan stand gagal, User juga batal dibuat
         with transaction.atomic():
+            # role_name di sini SUDAH PASTI menjadi 'Admin', 'Seller', atau 'Cashier'
+            # berkat proses pembersihan di fungsi validate_role di atas.
             role_name = validated_data.pop('role')
+            
             user = User.objects.create_user(**validated_data)
             group, _ = Group.objects.get_or_create(name=role_name)
             user.groups.add(group)
+            
             if role_name == 'Admin':
                 user.is_staff = True
                 user.save(update_fields=['is_staff'])
         
-            # --- TAMBAHKAN LOGIKA INI ---
             if role_name == 'Seller':
-                # Ambil models Tenant dari apps untuk menghindari circular import
                 Tenant = apps.get_model('tenants', 'Tenant')
-                
-                # 1. Buat nama stand random
                 random_suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
                 stand_name = f"Stand {user.username}-{random_suffix}"
-            
-                # 2. Buat Stand baru
                 new_stand = Tenant.objects.create(name=stand_name, active=True)
-            
-                # 3. Hubungkan user ini ke stand tersebut
                 new_stand.staff.add(user)
+                
             return user
     
 class UpdateUserSerializer(serializers.ModelSerializer):

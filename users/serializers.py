@@ -25,6 +25,10 @@ class UserSerializer(serializers.ModelSerializer):
             # Contoh: "Cashier" menjadi "cashier"
             return group.name.lower()
         return None
+    def get_is_mfa_enabled(self, obj):
+        if hasattr(obj, 'usermfa'):
+            return obj.usermfa.is_enabled
+        return False
 
 class UserCreateSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True)

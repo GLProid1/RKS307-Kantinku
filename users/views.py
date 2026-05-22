@@ -369,10 +369,14 @@ class CheckAuthView(APIView):
         
         # Deteksi role ulang
         role = 'customer'
-        if user.groups.filter(name__iexact='Cashier').exists(): role = 'cashier'
-        elif user.groups.filter(name__iexact='Seller').exists(): role = 'seller'
-        elif user.groups.filter(name__iexact='Admin').exists(): role = 'admin'
-        
+
+        if user.is_superuser or user.is_staff or user.groups.filter(name__iexact='Admin').exists():
+            role = 'admin'
+        elif user.groups.filter(name__iexact='Cashier').exists():
+            role = 'cashier'
+        elif user.groups.filter(name__iexact='Seller').exists():
+            role = 'seller'
+            
         return Response({
             "user": {**UserSerializer(user).data, "role": role},
             "message": "Pengguna terautentikasi"

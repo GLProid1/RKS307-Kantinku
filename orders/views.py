@@ -378,7 +378,6 @@ class CancelOrderView(APIView):
     return Response({"detail": f"Order dengan status {order.status} tidak dapat dibatalkan."}, status=status.HTTP_400_BAD_REQUEST)
   
 class UpdateOrderStatusView(APIView):
-    authentication_classes = [TokenAuthentication]
     permission_classes = [IsAuthenticated, IsOrderTenantStaff]
 
     VALID_TRANSITIONS = {
@@ -465,13 +464,11 @@ class OrderListView(generics.ListAPIView):
     serializer_class = OrderSerializer
     permission_classes = [IsAuthenticated]
 
-    def get_queryset(self):
-
-        #user = self.request.user
-        #Order.objects.filter(
-        #    status='AWAITING_PAYMENT',
-        #    expired_at__lt=timezone.now()
-        #).update(status='EXPIRED')
+    def get_queryset(self):    
+        Order.objects.filter(
+            status='AWAITING_PAYMENT',
+            expired_at__lt=timezone.now()
+        ).update(status='EXPIRED')
         
         base_qs = Order.objects.all()
 

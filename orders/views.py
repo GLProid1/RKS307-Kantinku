@@ -464,7 +464,8 @@ class OrderListView(generics.ListAPIView):
     serializer_class = OrderSerializer
     permission_classes = [IsAuthenticated]
 
-    def get_queryset(self):    
+    def get_queryset(self):
+        user = self.request.user
         Order.objects.filter(
             status='AWAITING_PAYMENT',
             expired_at__lt=timezone.now()
@@ -476,7 +477,7 @@ class OrderListView(generics.ListAPIView):
         # Jika user BUKAN Admin (is_staff) DAN BUKAN Kasir
         if not User.is_staff and not User.groups.filter(name='Cashier').exists():
             # Maka dia adalah Seller, filter berdasarkan tenant-nya
-            user_tenant_ids = User.tenants.values_list('id', flat=True)
+            user_tenant_ids = user.tenants.values_list('id', flat=True)
             base_qs = base_qs.filter(tenant_id__in=user_tenant_ids)
         
         # Admin dan Kasir akan melewati 'if' dan mendapatkan Order.objects.all()

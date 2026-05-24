@@ -5,24 +5,22 @@ from rest_framework import permissions
 
 class IsOrderTenantStaff(permissions.BasePermission):
     """
-    Izin untuk Admin atau Seller (staf) yang terdaftar 
+    Izin untuk Admin, Kasir, atau Seller yang terdaftar 
     di tenant pemilik Order.
     """
     message = "Anda tidak memiliki izin untuk mengakses order dari tenant ini."
 
     def has_object_permission(self, request, view, obj):
-        # 1. Cek 'is_staff' (Superuser) atau grup Admin
-        if request.user.is_staff or request.user.groups.filter(name='Admin').exists():
+        # 1. Izinkan Admin ATAU Cashier (Kasir butuh akses untuk memproses pembayaran)
+        if request.user.is_staff or request.user.groups.filter(name__in=['Admin', 'Cashier']).exists():
             return True
         
-        # 2. Cek apakah user adalah staff di tenant tersebut
-        # Import lokal untuk menghindari circular import jika perlu
+        # 2. Cek apakah user adalah Seller (staff) di tenant tersebut
         from .models import Order
         if isinstance(obj, Order):
             return obj.tenant.staff.filter(pk=request.user.pk).exists()
         
         return False
-
 class IsGuestOrderOwner(permissions.BasePermission):
     message = "Anda tidak memiliki izin untuk mengakses order ini."
 

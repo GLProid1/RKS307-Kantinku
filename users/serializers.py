@@ -9,22 +9,21 @@ import string
 import random
 
 class UserSerializer(serializers.ModelSerializer):
-    # Ubah ini dari CharField biasa menjadi SerializerMethodField
-    # tujuannya agar kita bisa memanipulasi teksnya (jadi lowercase)
     role = serializers.SerializerMethodField()
+    # Kita tambahkan inisialisasi field-nya agar terbaca
+    is_mfa_enabled = serializers.SerializerMethodField()
 
     class Meta:
         model = User
-        fields = ['id', 'username', 'email', 'role', 'first_name', 'last_name']
+        # TAMBAHKAN 'is_mfa_enabled' KE DALAM LIST INI
+        fields = ['id', 'username', 'email', 'role', 'first_name', 'last_name', 'is_mfa_enabled']
 
     def get_role(self, obj):
-        # Ambil group pertama user
         group = obj.groups.first()
         if group:
-            # Kembalikan nama group dalam HURUF KECIL (lower)
-            # Contoh: "Cashier" menjadi "cashier"
             return group.name.lower()
         return None
+
     def get_is_mfa_enabled(self, obj):
         if hasattr(obj, 'usermfa'):
             return obj.usermfa.is_enabled

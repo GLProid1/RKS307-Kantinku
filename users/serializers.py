@@ -32,14 +32,14 @@ class UserSerializer(serializers.ModelSerializer):
 class UserCreateSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True)
     role = serializers.CharField(write_only=True)
-    
-    # 1. TAMBAHKAN field opsional ini untuk menangkap input dari Frontend
     stand_name = serializers.CharField(write_only=True, required=False, allow_blank=True)
     
+    # TAMBAHAN: Tangkap ID Stand jika Admin memilih "Gabung Stand Lama"
+    existing_tenant_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
+
     class Meta:
         model = User
-        # 2. Masukkan stand_name ke dalam fields
-        fields = ['username', 'email', 'password', 'role', 'stand_name']
+        fields = ['username', 'email', 'password', 'role', 'stand_name', 'existing_tenant_id']
 
     def validate_role(self, value):
         valid_roles = ['admin', 'seller', 'cashier']
@@ -50,8 +50,8 @@ class UserCreateSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         with transaction.atomic():
             role_name = validated_data.pop('role')
-            # 3. Tangkap stand_name, jika tidak ada isikan None
-            stand_name = validated_data.pop('stand_name', None) 
+            stand_name = validated_data.pop('stand_name', None)
+            existing_tenant_id = validated_data.pop('existing_tenant_id', None)
             
             user = User.objects.create_user(**validated_data)
             group, _ = Group.objects.get_or_create(name=role_name)
@@ -64,14 +64,22 @@ class UserCreateSerializer(serializers.ModelSerializer):
             if role_name == 'Seller':
                 Tenant = apps.get_model('tenants', 'Tenant')
                 
-                # 4. Jika Admin tidak mengisi nama stand, gunakan nama otomatis
-                if not stand_name:
-                    random_suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=4))
-                    stand_name = f"Stand {user.username}-{random_suffix}"
-                    
-                # Buat stand baru dan langsung masukkan user ini sebagai staff-nya
-                new_stand = Tenant.objects.create(name=stand_name, active=True)
-                new_stand.staff.add(user)
+                # JIKA ADMIN MEMILIH GABUNG STAND YANG SUDAH ADA
+                if existing_tenant_id:
+                    try:
+                        tenant = Tenant.objects.get(id=existing_tenant_id)
+                        tenant.staff.add(user) # Masukkan akun ini sebagai staff (Misal Shift 2)
+                    except Tenant.DoesNotExist:
+                        pass
+                
+                # JIKA ADMIN MEMILIH BUAT STAND BARU
+                else:
+                    if not stand_name:
+                        random_suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=4))
+                        stand_name = f"Stand {user.username}-{random_suffix}"
+                        
+                    new_stand = Tenant.objects.create(name=stand_name, active=True)
+                    new_stand.staff.add(user)
                 
             return user
     

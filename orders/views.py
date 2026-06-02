@@ -472,6 +472,11 @@ class OrderListView(generics.ListAPIView):
         ).update(status='EXPIRED')
         
         base_qs = Order.objects.all()
+        satu_hari_lalu = timezone.now() - timedelta(days=1)
+        base_qs = base_qs.exclude(
+            status='EXPIRED',
+            created_at__lt=satu_hari_lalu
+        )
 
         # --- PERBAIKAN LOGIKA IZIN ---
         # Jika user BUKAN Admin (is_staff) DAN BUKAN Kasir

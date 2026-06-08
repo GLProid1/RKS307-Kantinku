@@ -223,11 +223,10 @@ class CreateOrderView(APIView):
         return Response(e.detail, status=status.HTTP_400_BAD_REQUEST)
     
     payment_info = None
-    if order.payment_method == 'TRANSFER':
+    if order.payment_method == 'ONLINE': # <--- Sesuaikan ini
       payment_info = initiate_payment_for_order(order)
-    elif order.payment_method== 'CASH':
-        # Kirim PIN asli ke task email
-        transaction.on_commit(lambda: send_cash_order_invoice.delay(order.pk, plain_pin_for_email))
+    elif order.payment_method == 'CASH':
+      transaction.on_commit(lambda: send_cash_order_invoice.delay(order.pk, plain_pin_for_email))
         
     if not request.user.is_authenticated:
         guest_uuids = request.session.get('guest_order_uuids', [])

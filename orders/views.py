@@ -223,36 +223,34 @@ class CreateOrderView(APIView):
         return Response(e.detail, status=status.HTTP_400_BAD_REQUEST)
     
     payment_info = None
-    if order.payment_method == 'ONLINE': # <--- Sesuaikan ini
-      payment_info = initiate_payment_for_order(order)
-    elif order.payment_method == 'CASH':
-      transaction.on_commit(lambda: send_cash_order_invoice.delay(order.pk, plain_pin_for_email))
-        
+    if order.payment_method.strip().upper() == 'TRANSFER':
+        payment_info = initiate_payment_for_order(order)
+    elif order.payment_method.strip().upper() == 'CASH':
+        transaction.on_commit(lambda: send_cash_order_invoice.delay(order.pk, plain_pin_for_email))
+            
     if not request.user.is_authenticated:
         guest_uuids = request.session.get('guest_order_uuids', [])
         if str(order.uuid) not in guest_uuids:
             guest_uuids.append(str(order.uuid))
             request.session['guest_order_uuids'] = guest_uuids
-    
+        
     guest_token = hmac.new(
         settings.SECRET_KEY.encode(),
         str(order.uuid).encode(),
         hashlib.sha256
     ).hexdigest()
-    
-    # --- PERBAIKAN UTAMA DI SINI ---
-    # Serializer mengambil data dari DB (yang berisi HASH)
+        
     order_response_data = OrderSerializer(order, context={'request': request}).data
-    
-    # Kita timpa field 'cashier_pin' di respons JSON dengan PIN ASLI
-    # Agar frontend bisa menampilkan angka yang benar ke user
+        
     if plain_pin_for_email:
         order_response_data['cashier_pin'] = plain_pin_for_email
 
+    # PERBAIKAN 2: Tambahkan 'snap_token' agar bisa dibaca oleh Frontend
     resp = {
-      'order': order_response_data,
-      'payment': payment_info,
-      'token': guest_token 
+        'order': order_response_data,
+        'payment': payment_info,
+        'token': guest_token,
+        'snap_token': payment_info.get('token') if payment_info else None
     }
     return Response(resp, status=status.HTTP_201_CREATED)
 

@@ -477,7 +477,7 @@ class OrderListView(generics.ListAPIView):
 
         # --- PERBAIKAN LOGIKA IZIN ---
         # Jika user BUKAN Admin (is_staff) DAN BUKAN Kasir
-        if not User.is_staff and not User.groups.filter(name='Cashier').exists():
+        if not user.is_staff and not user.groups.filter(name='Cashier').exists():
             # Maka dia adalah Seller, filter berdasarkan tenant-nya
             user_tenant_ids = user.tenants.values_list('id', flat=True)
             base_qs = base_qs.filter(tenant_id__in=user_tenant_ids)

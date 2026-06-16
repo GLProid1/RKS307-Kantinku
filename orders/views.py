@@ -477,7 +477,7 @@ class OrderListView(generics.ListAPIView):
 
         # --- PERBAIKAN LOGIKA IZIN ---
         # Jika user BUKAN Admin (is_staff) DAN BUKAN Kasir
-       if not user.is_staff and not user.groups.filter(name='Cashier').exists():
+        if not user.is_staff and not user.groups.filter(name='Cashier').exists():
             user_tenant_ids = user.tenants.values_list('id', flat=True)
             # PERBAIKAN: Pastikan status PAID diizinkan untuk dilihat Tenant
             # Tambahkan filter agar Tenant hanya melihat pesanan yang belum selesai

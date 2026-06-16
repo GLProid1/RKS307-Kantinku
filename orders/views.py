@@ -478,9 +478,13 @@ class OrderListView(generics.ListAPIView):
         # --- PERBAIKAN LOGIKA IZIN ---
         # Jika user BUKAN Admin (is_staff) DAN BUKAN Kasir
         if not user.is_staff and not user.groups.filter(name='Cashier').exists():
-            # Maka dia adalah Seller, filter berdasarkan tenant-nya
             user_tenant_ids = user.tenants.values_list('id', flat=True)
-            base_qs = base_qs.filter(tenant_id__in=user_tenant_ids)
+            # Batasi hanya pesanan milik tenant ini DAN status yang aktif
+            base_qs = base_qs.filter(
+                tenant_id__in=user_tenant_ids
+            ).exclude(
+                status__in=['EXPIRED', 'CANCELED', 'COMPLETED']
+            )
         
         # Admin dan Kasir akan melewati 'if' dan mendapatkan Order.objects.all()
         

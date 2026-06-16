@@ -485,7 +485,7 @@ class OrderListView(generics.ListAPIView):
         
             # JANGAN EXCLUDE 'PAID', karena Kanban Tenant butuh status PAID untuk "Pesanan Baru"
             base_qs = base_qs.exclude(status__in=['EXPIRED', 'CANCELED', 'COMPLETED'])
-        return base_qs.order_by('-created_at')
+        
         # Admin dan Kasir akan melewati 'if' dan mendapatkan Order.objects.all()
         
         # --- TAMBAHAN: TERAPKAN FILTER DARI URL ---

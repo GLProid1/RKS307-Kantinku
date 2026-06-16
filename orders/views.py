@@ -477,15 +477,15 @@ class OrderListView(generics.ListAPIView):
 
         # --- PERBAIKAN LOGIKA IZIN ---
         # Jika user BUKAN Admin (is_staff) DAN BUKAN Kasir
-        if not user.is_staff and not user.groups.filter(name='Cashier').exists():
+       if not user.is_staff and not user.groups.filter(name='Cashier').exists():
             user_tenant_ids = user.tenants.values_list('id', flat=True)
-            # Batasi hanya pesanan milik tenant ini DAN status yang aktif
-            base_qs = base_qs.filter(
-                tenant_id__in=user_tenant_ids
-            ).exclude(
-                status__in=['EXPIRED', 'CANCELED', 'COMPLETED']
-            )
+            # PERBAIKAN: Pastikan status PAID diizinkan untuk dilihat Tenant
+            # Tambahkan filter agar Tenant hanya melihat pesanan yang belum selesai
+            base_qs = base_qs.filter(tenant_id__in=user_tenant_ids)
         
+            # JANGAN EXCLUDE 'PAID', karena Kanban Tenant butuh status PAID untuk "Pesanan Baru"
+            base_qs = base_qs.exclude(status__in=['EXPIRED', 'CANCELED', 'COMPLETED'])
+        return base_qs.order_by('-created_at')
         # Admin dan Kasir akan melewati 'if' dan mendapatkan Order.objects.all()
         
         # --- TAMBAHAN: TERAPKAN FILTER DARI URL ---

@@ -19,10 +19,17 @@ class UserSerializer(serializers.ModelSerializer):
         fields = ['id', 'username', 'email', 'role', 'first_name', 'last_name', 'is_mfa_enabled']
 
     def get_role(self, obj):
+        # 1. Jika dia adalah superuser, otomatis anggap sebagai 'admin'
+        if obj.is_superuser:
+            return 'admin'
+            
+        # 2. Jika bukan superuser, cek grupnya (untuk Seller / Cashier)
         group = obj.groups.first()
         if group:
             return group.name.lower()
-        return None
+            
+        # 3. Default jika tidak punya grup
+        return 'customer'
 
     def get_is_mfa_enabled(self, obj):
         if hasattr(obj, 'usermfa'):

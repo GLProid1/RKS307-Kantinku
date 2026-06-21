@@ -91,13 +91,40 @@ class UserCreateSerializer(serializers.ModelSerializer):
             return user
     
 class UpdateUserSerializer(serializers.ModelSerializer):
+    role = serializers.CharField(write_only=True, required=False)
+    password = serializers.CharField(write_only=True, required=False)
+
     class Meta:
         model = User
-        fields = ['username', 'first_name', 'last_name', 'email']
+        fields = ['username', 'first_name', 'last_name', 'email', 'role', 'password']
         extra_kwargs = {
             'username': {'required': False},
             'email': {'required': False}
         }
+
+    def update(self, instance, validated_data):
+        # 1. Update Password (dengan hashing) jika ada
+        password = validated_data.pop('password', None)
+        if password:
+            instance.set_password(password)
+
+        # 2. Update Role jika ada
+        role_name = validated_data.pop('role', None)
+        if role_name:
+            role_name = role_name.capitalize()
+            # Hapus role/grup lama dan masukkan ke grup baru
+            instance.groups.clear() 
+            group, _ = Group.objects.get_or_create(name=role_name)
+            instance.groups.add(group)
+            
+            # Sesuaikan status staff
+            if role_name == 'Admin':
+                instance.is_staff = True
+            else:
+                instance.is_staff = False
+
+        # 3. Simpan perubahan field bawaan lainnya (username, email)
+        return super().update(instance, validated_data)
         
 class ChangePasswordSerializer(serializers.Serializer):
     old_password = serializers.CharField(required=True)

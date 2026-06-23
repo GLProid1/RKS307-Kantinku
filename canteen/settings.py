@@ -61,7 +61,7 @@ ANYMAIL = {
 }
 
 # (Opsional) Set default email pengirim jika tidak didefinisikan saat mengirim
-DEFAULT_FROM_EMAIL = "Admin KantinKu <onboarding@resend.dev>"
+DEFAULT_FROM_EMAIL = "KantinKu <noreply@kantinku.my.id>"
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [

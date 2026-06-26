@@ -1,4 +1,4 @@
-from rest_framework import viewsets, status, permissions
+from rest_framework import viewsets, status, permissions, filters
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
@@ -145,3 +145,13 @@ class VariantOptionViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         group = get_object_or_404(VariantGroup, pk=self.kwargs.get('group_pk'), tenant_id=self.kwargs.get('stand_pk'))
         serializer.save(group=group)
+
+class GlobalMenuItemViewSet(viewsets.ReadOnlyModelViewSet):
+    serializer_class = MenuItemSerializer
+    filter_backends = [filters.SearchFilter]
+    search_fields = ['name', 'description']
+    permission_classes = [AllowAny]
+
+    def get_queryset(self):
+        # Hanya cari menu dari stand yang statusnya masih aktif
+        return MenuItem.objects.filter(tenant__active=True)

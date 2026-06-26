@@ -6,11 +6,13 @@ from .views import (
     StandViewSet, 
     MenuItemViewSet,
     VariantGroupViewSet,
-    VariantOptionViewSet
+    VariantOptionViewSet,
+    GlobalMenuItemViewSet
 )
 
 router = routers.DefaultRouter()
 router.register(r'stands', StandViewSet, basename='stand')
+router.register(r'menus', GlobalMenuItemViewSet, basename='global-menus')
 
 stands_router = routers.NestedDefaultRouter(router, r'stands', lookup='stand')
 stands_router.register(r'menus', MenuItemViewSet, basename='stand-menus')

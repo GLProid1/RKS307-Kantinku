@@ -30,7 +30,7 @@ from rest_framework.throttling import AnonRateThrottle
 
 from .models import Order, OrderItem, Customer, MenuItem, Tenant, Table, generate_order_pin, PaymentWebhookLog
 from .serializers import (
-    OrderSerializer, OrderCreateSerializer
+    OrderSerializer, OrderCreateSerializer, TableSerializer,
 )
 from .permissions import (
     IsOrderTenantStaff, IsGuestOrderOwner
@@ -560,7 +560,25 @@ class TakeawayQRCodeView(APIView):
         buffer.seek(0)
         
         return HttpResponse(buffer, content_type="image/png")
+        
+class TableListCreateView(generics.ListCreateAPIView):
+    """
+    GET  : Menampilkan seluruh meja
+    POST : Menambahkan meja baru
+    """
+    queryset = Table.objects.all().order_by("code")
+    serializer_class = TableSerializer
+    permission_classes = [permissions.IsAdminUser]
 
+
+class TableDetailView(generics.DestroyAPIView):
+    """
+    DELETE : Menghapus meja
+    """
+    queryset = Table.objects.all()
+    serializer_class = TableSerializer
+    permission_classes = [permissions.IsAdminUser]
+    
 # --- PERBAIKAN TOTAL UNTUK MASALAH DUPLIKAT ---
 class ReportDashboardAPIView(APIView):
     permission_classes = [IsAuthenticated]

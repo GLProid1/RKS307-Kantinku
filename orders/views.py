@@ -119,8 +119,14 @@ class CreateOrderView(APIView):
     data = serializer.validated_data
     tenant = get_object_or_404(Tenant, pk=data['tenant'], active=True)
     table = None
+    order_type = 'TAKEAWAY' # Default jika tidak ada meja
+
     if data.get('table'):
-      table,_ = Table.objects.get_or_create(code=data['table'])
+        try:
+            table = Table.objects.get(code=data['table'])
+            order_type = 'DINE_IN' # Set Dine-In otomatis jika meja valid
+        except Table.DoesNotExist:
+            raise serializers.ValidationError({"table": "Kode meja tidak terdaftar."})
 
     customer = None
     name = data.get('name')
@@ -161,6 +167,7 @@ class CreateOrderView(APIView):
           tenant=tenant, table=table, customer=customer,
           payment_method=data['payment_method'],
           status = 'AWAITING_PAYMENT',
+          order_type=order_type,
           cashier_pin=cashier_pin_db, # Simpan HASH di database
           expired_at = timezone.now() + timezone.timedelta(minutes=10)
         )

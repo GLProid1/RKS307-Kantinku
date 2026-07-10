@@ -527,7 +527,7 @@ class TableQRCodeView(APIView):
         encrypted_token = signing.dumps({'table_code': table.code})
         
         # Masukkan token enkripsi ke dalam URL QR, BUKAN nama mejanya
-        qr_url = f"{frontend_base_url}/menu?token={encrypted_token}"
+        qr_url = f"{frontend_base_url}/?token={encrypted_token}"
         
         qr = qrcode.QRCode(version=1, error_correction=qrcode.constants.ERROR_CORRECT_L, box_size=10, border=4)
         qr.add_data(qr_url)
@@ -549,7 +549,7 @@ class TakeawayQRCodeView(APIView):
         
         # PERBAIKAN: Gunakan FRONTEND_URL seperti di TableQRCodeView
         frontend_base_url = getattr(settings, 'FRONTEND_URL')
-        frontend_url = f"{frontend_base_url}/menu?tenant={tenant.pk}&order_type=TAKEAWAY"
+        frontend_url = f"{frontend_base_url}/?tenant={tenant.pk}&order_type=TAKEAWAY"
         
         qr = qrcode.QRCode(version=1, box_size=10, border=4)
         qr.add_data(frontend_url)

@@ -126,11 +126,9 @@ class CreateOrderView(APIView):
     if qr_token:
         try:
             # Dekripsi token. max_age=86400 berarti QR code kedaluwarsa dalam 1 hari (opsional)
-            decoded_data = signing.loads(qr_token, max_age=86400)
+            decoded_data = signing.loads(qr_token)
             table = Table.objects.get(code=decoded_data['table_code'])
             order_type = 'DINE_IN' 
-        except signing.SignatureExpired:
-            raise serializers.ValidationError({"token": "QR Code meja ini sudah kedaluwarsa (lebih dari 1 hari)."})
         except (signing.BadSignature, Table.DoesNotExist):
             raise serializers.ValidationError({"token": "QR Code meja tidak valid atau merupakan hasil manipulasi."})
 

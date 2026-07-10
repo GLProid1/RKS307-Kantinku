@@ -121,6 +121,7 @@ class CreateOrderView(APIView):
     tenant = get_object_or_404(Tenant, pk=data['tenant'], active=True)
     table = None
     order_type = 'TAKEAWAY' # Default jika tidak ada meja
+    qr_token = request.data.get('token')
 
     if qr_token:
         try:

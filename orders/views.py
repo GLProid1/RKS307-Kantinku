@@ -515,10 +515,15 @@ class TableQRCodeView(APIView):
 
     def get(self, request, table_code):
         table = get_object_or_404(Table, code=table_code)
-        frontend_url = request.build_absolute_uri(reverse('create-order')) + f"?table={table.code}"
+        
+        # Ambil URL React dari settings, berikan fallback localhost jika belum di-set
+        frontend_base_url = getattr(settings, 'FRONTEND_URL')
+        
+        # URL yang akan di-scan user untuk membuka menu di HP mereka
+        qr_url = f"{frontend_base_url}/menu?table={table.code}"
         
         qr = qrcode.QRCode(version=1, error_correction=qrcode.constants.ERROR_CORRECT_L, box_size=10, border=4)
-        qr.add_data(frontend_url)
+        qr.add_data(qr_url)
         qr.make(fit=True)
 
         img = qr.make_image(fill_color="black", back_color="white")

@@ -5,7 +5,8 @@ from .views import (
     # Orders Views
     CreateOrderView, MidtransWehboohView, 
     OrderDetailView, UpdateOrderStatusView, CancelOrderView, OrderListView,
-    TableQRCodeView, TakeawayQRCodeView, PopularMenusView,
+    TableQRCodeView, TakeawayQRCodeView, PopularMenusView,TableListCreateView,
+    TableDetailView,
     
     # ViewSets / Dashboard
     ReportDashboardAPIView,
@@ -44,6 +45,9 @@ urlpatterns = [
     path('webhooks/payment/', MidtransWehboohView.as_view(), name='payment-webhooks'),
     
     # 5. QR Code Generation
+    path("tables/", TableListCreateView.as_view(), name="table-list-create"),
+    path("tables/<int:pk>/", TableDetailView.as_view(), name="table-detail"),
+    
     path('tables/<str:table_code>/qr/', TableQRCodeView.as_view(), name='table-qr-code'),
     path('tenants/<int:tenant_id>/takeaway-qr/', TakeawayQRCodeView.as_view(), name='takeaway-qr-code'),
 ]

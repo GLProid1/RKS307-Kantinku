@@ -24,6 +24,7 @@ class OrderItemCreateSerializer(serializers.Serializer):
 class OrderCreateSerializer(serializers.Serializer):
     tenant = serializers.IntegerField()
     table = serializers.CharField(required=False, allow_blank=True)
+    token = serializers.CharField(required=False, allow_blank=True)
     name = serializers.CharField(max_length=100, required=True)
     email = serializers.EmailField(required=True)
     phone = serializers.CharField(required=False, allow_blank=True)
@@ -60,4 +61,4 @@ class OrderSerializer(serializers.ModelSerializer):
     customer = CustomerSerializer(allow_null=True)  # <-- TAMBAHKAN INI
     class Meta:
         model = Order
-        fields = ['id','uuid','cashier_pin', 'references_code', 'tenant', 'table', 'customer', 'status', 'payment_method', 'total', 'items', 'created_at', 'paid_at', 'meta']
+        fields = ['id','uuid','cashier_pin', 'references_code', 'tenant', 'table', 'customer', 'status','order_type', 'payment_method', 'total', 'items', 'created_at', 'paid_at', 'meta']

@@ -2,6 +2,7 @@ import hmac
 import hashlib
 import logging
 from django.conf import settings
+from django.core import signing
 from django.shortcuts import get_object_or_404
 from django.http import HttpResponse
 from django.urls import reverse
@@ -121,12 +122,16 @@ class CreateOrderView(APIView):
     table = None
     order_type = 'TAKEAWAY' # Default jika tidak ada meja
 
-    if data.get('table'):
+    if qr_token:
         try:
-            table = Table.objects.get(code=data['table'])
-            order_type = 'DINE_IN' # Set Dine-In otomatis jika meja valid
-        except Table.DoesNotExist:
-            raise serializers.ValidationError({"table": "Kode meja tidak terdaftar."})
+            # Dekripsi token. max_age=86400 berarti QR code kedaluwarsa dalam 1 hari (opsional)
+            decoded_data = signing.loads(qr_token, max_age=86400)
+            table = Table.objects.get(code=decoded_data['table_code'])
+            order_type = 'DINE_IN' 
+        except signing.SignatureExpired:
+            raise serializers.ValidationError({"token": "QR Code meja ini sudah kedaluwarsa (lebih dari 1 hari)."})
+        except (signing.BadSignature, Table.DoesNotExist):
+            raise serializers.ValidationError({"token": "QR Code meja tidak valid atau merupakan hasil manipulasi."})
 
     customer = None
     name = data.get('name')
@@ -515,12 +520,13 @@ class TableQRCodeView(APIView):
 
     def get(self, request, table_code):
         table = get_object_or_404(Table, code=table_code)
+        frontend_base_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:3000')
         
-        # Ambil URL React dari settings, berikan fallback localhost jika belum di-set
-        frontend_base_url = getattr(settings, 'FRONTEND_URL')
+        # PERBAIKAN KEAMANAN: Enkripsi kode meja
+        encrypted_token = signing.dumps({'table_code': table.code})
         
-        # URL yang akan di-scan user untuk membuka menu di HP mereka
-        qr_url = f"{frontend_base_url}/menu?table={table.code}"
+        # Masukkan token enkripsi ke dalam URL QR, BUKAN nama mejanya
+        qr_url = f"{frontend_base_url}/menu?token={encrypted_token}"
         
         qr = qrcode.QRCode(version=1, error_correction=qrcode.constants.ERROR_CORRECT_L, box_size=10, border=4)
         qr.add_data(qr_url)
@@ -539,11 +545,13 @@ class TakeawayQRCodeView(APIView):
 
     def get(self, request, tenant_id):
         tenant = get_object_or_404(Tenant, pk=tenant_id)
-        frontend_url = request.build_absolute_uri(reverse('create-order')) + f"?tenant={tenant.pk}&order_type=TAKEAWAY"
+        
+        # PERBAIKAN: Gunakan FRONTEND_URL seperti di TableQRCodeView
+        frontend_base_url = getattr(settings, 'FRONTEND_URL')
+        frontend_url = f"{frontend_base_url}/menu?tenant={tenant.pk}&order_type=TAKEAWAY"
         
         qr = qrcode.QRCode(version=1, box_size=10, border=4)
         qr.add_data(frontend_url)
-        qr.make(fit=True)
         img = qr.make_image(fill_color="black", back_color="white")
         
         buffer = io.BytesIO()

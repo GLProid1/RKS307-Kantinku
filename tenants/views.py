@@ -12,6 +12,8 @@ from users.permissions import IsAdminUser
 from rest_framework import generics
 from django.db.models import ProtectedError
 
+from orders.permissions import IsWithinOperationalHoursAndLocation
+
 class StandViewSet(viewsets.ModelViewSet):
     serializer_class = StandSerializer
     parser_classes = (MultiPartParser, FormParser, JSONParser)
@@ -63,7 +65,7 @@ class StandViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action in ['list', 'retrieve']:
-            permission_classes = [AllowAny]
+            permission_classes = [IsWithinOperationalHoursAndLocation]
         elif self.action in ['create', 'destroy']:
             permission_classes = [IsAdminUser]
         elif self.action in ['update', 'partial_update']:
@@ -103,7 +105,7 @@ class MenuItemViewSet(viewsets.ModelViewSet):
         Izin ini memeriksa kepemilikan tenant dari URL, yang lebih aman untuk create/list.
         """
         if self.action in ['list', 'retrieve']:
-            self.permission_classes = [permissions.AllowAny]
+            self.permission_classes = [IsWithinOperationalHoursAndLocation]
         else:
             self.permission_classes = [IsAuthenticated, IsTenantStaffForNestedViews] 
         return super().get_permissions()
@@ -150,7 +152,7 @@ class GlobalMenuItemViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = MenuItemSerializer
     filter_backends = [filters.SearchFilter]
     search_fields = ['name', 'description']
-    permission_classes = [AllowAny]
+    permission_classes = [IsWithinOperationalHoursAndLocation]
 
     def get_queryset(self):
         # Hanya cari menu dari stand yang statusnya masih aktif

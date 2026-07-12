@@ -277,6 +277,9 @@ AXES_COOLOFF_TIME = timedelta(hours=1)
 AXES_LOCKOUT_PARAMETERS = ["username", "ip_address"]
 AXES_RESET_ON_SUCCESS = True
 
+TIME_ZONE = 'Asia/Jakarta'
+USE_TZ = True
+
 # Konfigurasi Logging Keamanan
 LOGGING = {
     'version': 1,

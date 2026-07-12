@@ -33,7 +33,7 @@ from .serializers import (
     OrderSerializer, OrderCreateSerializer, TableSerializer,
 )
 from .permissions import (
-    IsOrderTenantStaff, IsGuestOrderOwner
+    IsOrderTenantStaff, IsGuestOrderOwner,IsWithinOperationalHoursAndLocation
 )
 from .tasks import send_order_paid_notification, send_cash_order_invoice
 from tenants.models import Tenant, MenuItem, VariantOption
@@ -109,7 +109,7 @@ class PopularMenusView(generics.ListAPIView):
 
 
 class CreateOrderView(APIView):
-  permission_classes = [permissions.AllowAny]
+  permission_classes = [IsWithinOperationalHoursAndLocation]
   throttle_classes = [ScopedRateThrottle] # Gunakan Scoped global
   throttle_scope = 'burst'
 

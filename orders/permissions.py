@@ -50,7 +50,7 @@ class IsWithinOperationalHoursAndLocation(permissions.BasePermission):
         # Contoh konfigurasi koordinat:
         CANTEEN_LAT = 1.1187  # Sesuaikan dengan koordinat lokasi kantin
         CANTEEN_LON = 104.0485
-        MAX_RADIUS_METERS = 100 # Batas toleransi 100 meter
+        MAX_RADIUS_METERS = 10000 # Batas toleransi 100 meter
 
         distance = calculate_haversine_distance(user_lat, user_lon, CANTEEN_LAT, CANTEEN_LON)
 

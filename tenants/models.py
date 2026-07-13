@@ -17,7 +17,7 @@ class Tenant(models.Model):
       help_text="Longitude pusat kantin/tenant"
   )
   max_radius_meters = models.IntegerField(
-      default=100,
+      default=10000,
       help_text="Batas toleransi jarak akses dalam meter"
   )
 

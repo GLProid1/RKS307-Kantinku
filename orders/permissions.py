@@ -21,7 +21,7 @@ class IsWithinOperationalHoursAndLocation(permissions.BasePermission):
         # Misalnya kita ambil spesifikasi waktu dari setting umum atau tenant
         # Contoh jika default jam 07:00 sd 16:00:
         open_hour = 7
-        close_hour = 16
+        close_hour = 23
 
         if not (open_hour <= current_hour < close_hour):
             self.message = f"ABAC DENY [TIME]: Kantin hanya beroperasi pukul {open_hour}:00 - {close_hour}:00 WIB. Waktu saat ini: {current_time.strftime('%H:%M')} WIB."

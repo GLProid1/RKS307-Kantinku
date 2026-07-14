@@ -3,13 +3,14 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.shortcuts import get_object_or_404
-from .models import Tenant, MenuItem, VariantGroup, VariantOption
-from .serializers import StandSerializer, MenuItemSerializer, VariantGroupSerializer, VariantGroupCreateSerializer, VariantOptionSerializer, VariantOptionCreateSerializer
+from .models import Tenant, MenuItem, VariantGroup, VariantOption,SystemSettings
+from .serializers import StandSerializer, MenuItemSerializer, VariantGroupSerializer, VariantGroupCreateSerializer, VariantOptionSerializer, VariantOptionCreateSerializer,SystemSettingsSerializer
 from .permissions import IsTenantStaff, IsTenantStaffForNestedViews
 from django.contrib.auth.models import User
 from rest_framework.response import Response
 from users.permissions import IsAdminUser
 from rest_framework import generics
+from rest_framework.views import APIView
 from django.db.models import ProtectedError
 
 from orders.permissions import IsWithinOperationalHoursAndLocation
@@ -157,3 +158,32 @@ class GlobalMenuItemViewSet(viewsets.ReadOnlyModelViewSet):
     def get_queryset(self):
         # Hanya cari menu dari stand yang statusnya masih aktif
         return MenuItem.objects.filter(tenant__active=True)
+
+
+class SystemSettingsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        """Mengambil pengaturan sistem saat ini."""
+        settings = SystemSettings.get_settings()
+        serializer = SystemSettingsSerializer(settings)
+        return Response(serializer.data)
+
+    def put(self, request):
+        """Memperbarui pengaturan sistem (Hanya Admin)."""
+        # Cek apakah user adalah Admin
+        is_admin = request.user.is_staff or request.user.groups.filter(name='Admin').exists()
+        if not is_admin:
+            return Response(
+                {"detail": "Hanya Admin yang dapat mengubah pengaturan operasional."}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        settings = SystemSettings.get_settings()
+        serializer = SystemSettingsSerializer(settings, data=request.data, partial=True)
+        
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+            
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

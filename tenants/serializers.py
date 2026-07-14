@@ -1,5 +1,12 @@
 from rest_framework import serializers
-from .models import Tenant, MenuItem, VariantGroup, VariantOption
+from .models import Tenant, MenuItem, VariantGroup, VariantOption,SystemSettings
+
+
+class SystemSettingsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SystemSettings
+        fields = ['open_hour', 'close_hour', 'canteen_lat', 'canteen_lon', 'max_radius_meters']
+
 
 class VariantGroupCreateSerializer(serializers.ModelSerializer):
     class Meta:

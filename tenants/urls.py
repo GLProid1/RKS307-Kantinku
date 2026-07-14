@@ -7,7 +7,8 @@ from .views import (
     MenuItemViewSet,
     VariantGroupViewSet,
     VariantOptionViewSet,
-    GlobalMenuItemViewSet
+    GlobalMenuItemViewSet,
+    SystemSettingsView
 )
 
 router = routers.DefaultRouter()
@@ -25,4 +26,5 @@ urlpatterns = [
     path('', include(router.urls)),
     path('', include(stands_router.urls)),
     path('', include(groups_router.urls)),
+    path('settings/abac/', SystemSettingsView.as_view(), name='system-settings'),
 ]

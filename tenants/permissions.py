@@ -1,6 +1,8 @@
 from rest_framework import permissions
 from tenants.models import Tenant, MenuItem
 from django.shortcuts import get_object_or_404
+from canteen.utils import calculate_haversine_distance
+from django.utils import timezone
 
 class IsTenantStaff(permissions.BasePermission):
     message = "Anda bukan staf dari tenant ini."
@@ -48,3 +50,43 @@ class IsTenantStaffForNestedViews(permissions.BasePermission):
         
         # Periksa apakah pengguna yang terutentikasi ada didalam staff tenant tersebut
         return request.user.tenants.filter(pk=stand_pk).exists()
+
+
+class IsWithinOperationalHoursAndLocation(permissions.BasePermission):
+    message = "Akses ditolak: Lokasi atau jam operasional tidak sesuai."
+
+    def has_permission(self, request, view):
+        # 1. Identifikasi Tenant (karena setiap stand punya aturan sendiri)
+        # Ambil stand_pk jika ada di URL, atau ambil dari objek jika itu detail view
+        stand_pk = view.kwargs.get('stand_pk') or view.kwargs.get('pk')
+        if not stand_pk:
+            return True # Lewati jika bukan akses ke spesifik tenant
+            
+        tenant = Tenant.objects.get(pk=stand_pk)
+
+        # 2. EVALUASI WAKTU (Time ABAC)
+        current_time = timezone.localtime(timezone.now()).time()
+        # Menggunakan field dari model Tenant
+        if not (tenant.open_hour <= current_time.hour < tenant.close_hour):
+            self.message = f"Kantin buka pukul {tenant.open_hour}:00 - {tenant.close_hour}:00 WIB."
+            return False
+
+        # 3. EVALUASI LOKASI (Location ABAC)
+        user_lat = request.headers.get('X-User-Latitude')
+        user_lon = request.headers.get('X-User-Longitude')
+
+        if not user_lat or not user_lon:
+            self.message = "Data geolokasi wajib diaktifkan."
+            return False
+
+        # Gunakan field dari model Tenant[cite: 7]
+        distance = calculate_haversine_distance(
+            float(user_lat), float(user_lon), 
+            tenant.latitude, tenant.longitude
+        )
+
+        if distance > tenant.max_radius_meters:
+            self.message = f"Anda berada di luar jangkauan area kantin ({distance:.0f}m)."
+            return False
+
+        return True

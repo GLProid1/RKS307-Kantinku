@@ -68,3 +68,32 @@ class VariantOption(models.Model):
 
     def __str__(self):
         return f"{self.name} (+{self.price})"
+
+class SystemSettings(models.Model):
+    # Pengaturan Waktu Operasional
+    open_hour = models.TimeField(default='07:00:00', help_text="Jam buka kantin")
+    close_hour = models.TimeField(default='23:00:00', help_text="Jam tutup kantin")
+    
+    # Pengaturan Lokasi (Titik Pusat Kantin)
+    canteen_lat = models.FloatField(default=1.1187, help_text="Latitude pusat kantin")
+    canteen_lon = models.FloatField(default=104.0485, help_text="Longitude pusat kantin")
+    max_radius_meters = models.IntegerField(default=100, help_text="Batas radius maksimal (dalam meter)")
+
+    class Meta:
+        verbose_name = "System Setting"
+        verbose_name_plural = "System Settings"
+
+    def save(self, *args, **kwargs):
+        # Mencegah pembuatan baris baru, hanya boleh ada 1 record (Singleton)
+        if not self.pk and SystemSettings.objects.exists():
+            raise ValidationError('Hanya boleh ada satu pengaturan sistem (Singleton).')
+        return super(SystemSettings, self).save(*args, **kwargs)
+
+    @classmethod
+    def get_settings(cls):
+        # Mengambil data pengaturan, jika belum ada otomatis dibuat dengan nilai default
+        obj, created = cls.objects.get_or_create(pk=1)
+        return obj
+
+    def __str__(self):
+        return "Pengaturan ABAC Kantin Global"

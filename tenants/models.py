@@ -8,30 +8,7 @@ class Tenant(models.Model):
   staff = models.ManyToManyField(settings.AUTH_USER_MODEL, related_name='tenants', blank=True)
   active = models.BooleanField(default=True)
   image = models.ImageField(upload_to='stand_images/', default='stand_images/default.png', blank=True)
-  latitude = models.FloatField(
-        null=True, blank=True,
-        help_text="Latitude pusat kantin/tenant"
-  )
-  longitude = models.FloatField(
-       null=True, blank=True,
-      help_text="Longitude pusat kantin/tenant"
-  )
-  max_radius_meters = models.IntegerField(
-      default=10000,
-      help_text="Batas toleransi jarak akses dalam meter"
-  )
-
-  # 2. Time Attributes (Format 24 Jam: 0 - 23)
-  open_hour = models.IntegerField(
-      default=7,
-      validators=[MinValueValidator(0), MaxValueValidator(23)],
-      help_text="Jam buka (contoh: 7 untuk 07:00)"
-  )
-  close_hour = models.IntegerField(
-      default=16,
-      validators=[MinValueValidator(0), MaxValueValidator(23)],
-      help_text="Jam tutup (contoh: 16 untuk 16:00)"
-  )
+  
   
   def __str__(self):
     return self.name

@@ -1,6 +1,7 @@
 from django.db import models
 from django.conf import settings
 from django.core.validators import MinValueValidator, MaxValueValidator,ValidationError
+from django.core.exceptions import ValidationError
 
 class Tenant(models.Model):
   name = models.CharField(max_length=50)
@@ -74,3 +75,40 @@ class SystemSettings(models.Model):
 
     def __str__(self):
         return "Pengaturan ABAC Kantin Global"
+
+class SystemSettings(models.Model):
+    # Waktu Operasional
+    open_hour = models.IntegerField(
+        default=7,
+        validators=[MinValueValidator(0), MaxValueValidator(23)],
+        help_text="Jam buka (contoh: 7 untuk 07:00)"
+    )
+    close_hour = models.IntegerField(
+        default=16,
+        validators=[MinValueValidator(0), MaxValueValidator(23)],
+        help_text="Jam tutup (contoh: 16 untuk 16:00)"
+    )
+    
+    # Lokasi Kantin
+    canteen_lat = models.FloatField(default=1.1187, help_text="Latitude pusat kantin")
+    canteen_lon = models.FloatField(default=104.0485, help_text="Longitude pusat kantin")
+    max_radius_meters = models.IntegerField(default=10000, help_text="Batas radius maksimal (dalam meter)")
+
+    class Meta:
+        verbose_name = "System Setting"
+        verbose_name_plural = "System Settings"
+
+    def save(self, *args, **kwargs):
+        # Mencegah pembuatan baris baru, menjamin ini adalah Singleton
+        if self.__class__.objects.count() > 0 and self.pk != self.__class__.objects.first().pk:
+            raise ValidationError('Hanya boleh ada satu pengaturan sistem (Singleton).')
+        super().save(*args, **kwargs)
+
+    @classmethod
+    def get_settings(cls):
+        # Jika data belum ada di database, otomatis dibuat dengan nilai default
+        obj, created = cls.objects.get_or_create(pk=1)
+        return obj
+
+    def __str__(self):
+        return "Pengaturan Sistem ABAC Global"

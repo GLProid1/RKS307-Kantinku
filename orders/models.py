@@ -46,7 +46,7 @@ class Order(models.Model):
   
   uuid = models.UUIDField(default=uuid.uuid4, editable=False, unique=True, db_index=True)
   references_code = models.CharField(max_length=50, default=generate_references_code, unique=True, db_index=True)
-  cashier_pin = models.CharField(max_length=255, blank=True, null=True, help_text="PIN (Hashed) untuk konfirmasi kasir")
+  cashier_pin = models.CharField(max_length=10,default=generate_order_pin,editable=False,help_text="PIN 6 digit untuk konfirmasi kasir")
   table = models.ForeignKey(Table, on_delete=models.SET_NULL, null=True, blank=True)
   tenant = models.ForeignKey(Tenant, on_delete=models.PROTECT, related_name='orders')
   customer = models.ForeignKey(Customer, on_delete=models.SET_NULL, null=True, blank=True)
@@ -70,19 +70,13 @@ class Order(models.Model):
     return f"{self.references_code} ({self.tenant.name})"
   
   def calculate_total(self):
-    aggregated = self.items.aggregate(
-      calculated_total=Sum(
-        F('price') * F('qty'),
-        output_field=DecimalField(max_digits=14, decimal_places=2)
-      )
-    )
+    # PERBAIKAN 2: Gunakan prefetch_related & get_subtotal() agar harga varian ikut terhitung
+    items = self.items.prefetch_related('selected_variants').all()
+    new_total = sum(item.get_subtotal() for item in items)
         
-    new_total = aggregated['calculated_total'] or 0
-        
-        # Point 6: Gunakan update() ketimbang save() agar lebih ringan 
-        # dan tidak memicu sinyal pre_save/post_save yang tidak perlu
+    # Update ke database secara efisien tanpa memicu sinyal pre/post save
     Order.objects.filter(pk=self.pk).update(total=new_total)
-    self.total = new_total # Update instance di memori agar tetap sinkron
+    self.total = new_total
         
     return self.total
   

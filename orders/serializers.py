@@ -48,10 +48,11 @@ class OrderCreateSerializer(serializers.Serializer):
             raise serializers.ValidationError("Terdapat satu atau lebih item yang bukan milik tenant ini.")
         return data
         
+    @transaction.atomic
     def create(self, validated_data):
         items_data = validated_data.pop('items')
         
-        # 1. Ambil data customer dari INPUT FORM FRONTEND ("virrel yaw")
+        # 1. Ambil data customer dari INPUT FORM FRONTEND
         name = validated_data.pop('name')
         email = validated_data.pop('email')
         phone = validated_data.pop('phone', None)
@@ -62,8 +63,7 @@ class OrderCreateSerializer(serializers.Serializer):
             defaults={'name': name, 'phone': phone}
         )
         
-        # Jika customer lama memesan tapi memakai nama baru di form ("virrel yaw"),
-        # kita perbarui namanya di database!
+        # Perbarui nama jika pembeli lama menggunakan nama baru
         if not created and customer.name != name:
             customer.name = name
             if phone:
@@ -76,19 +76,26 @@ class OrderCreateSerializer(serializers.Serializer):
         if table_code:
             table_obj = Table.objects.filter(code=table_code).first()
 
-        # 4. Buat Order Baru (Tanpa mengaitkan ke request.user)
+        # 4. [PERBAIKAN CRITICAL]: Ambil object Tenant dan pop token yang tidak ada di model Order
+        tenant_id = validated_data.pop('tenant')
+        tenant_obj = Tenant.objects.get(pk=tenant_id)
+        
+        # Hapus 'token' jika ada dari frontend karena tidak ada di model Order
+        validated_data.pop('token', None) 
+
+        # 5. Buat Order Baru menggunakan Object yang sudah matang
         order = Order.objects.create(
             customer=customer,
+            tenant=tenant_obj,  # <-- Masukkan object Tenant di sini
             table=table_obj,
             **validated_data
         )
 
-        # 5. Buat OrderItem beserta Varian-nya
+        # 6. Buat OrderItem beserta Varian-nya
         for item_data in items_data:
             variants = item_data.pop('variants', [])
             menu_item_id = item_data.pop('menu_item')
             
-            # Ambil object menu
             menu_item = MenuItem.objects.get(id=menu_item_id)
             
             order_item = OrderItem.objects.create(
@@ -98,11 +105,10 @@ class OrderCreateSerializer(serializers.Serializer):
                 **item_data
             )
             
-            # Daftarkan varian jika ada
             if variants:
                 order_item.selected_variants.set(variants)
 
-        # 6. Hitung total akhir (Termasuk harga varian)
+        # 7. Hitung total akhir (Termasuk harga varian)
         order.calculate_total()
         
         return order

@@ -1,45 +1,34 @@
 import hmac
 import hashlib
 import logging
+import qrcode
+import io
+from decimal import Decimal
+from datetime import timedelta
+
 from django.conf import settings
 from django.core import signing
 from django.shortcuts import get_object_or_404
 from django.http import HttpResponse
-from django.urls import reverse
 from django.utils import timezone
-from datetime import timedelta
-from django.db import transaction
-from django.db import models
-from django.db.models import Sum, Count, Avg, Q, OuterRef, Subquery, IntegerField
+from django.db import transaction, models
+from django.db.models import Sum, Count, Avg, Q
 from django.db.models.functions import TruncHour
-from django.contrib.auth.models import User, Group
-from rest_framework import status, permissions, generics, viewsets, serializers
-from rest_framework.authentication import TokenAuthentication
-from rest_framework.permissions import IsAuthenticated
-from rest_framework.throttling import ScopedRateThrottle
-from decimal import Decimal
-from rest_framework.throttling import AnonRateThrottle
 
-from django.contrib.auth.hashers import make_password
+from rest_framework import status, permissions, generics
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework import status, permissions, generics, viewsets, serializers
-from rest_framework.decorators import action
-from rest_framework.permissions import AllowAny, IsAuthenticated, OR
-from rest_framework.throttling import AnonRateThrottle
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.throttling import ScopedRateThrottle
 
-from .models import Order, OrderItem, Customer, MenuItem, Tenant, Table, generate_order_pin, PaymentWebhookLog
-from .serializers import (
-    OrderSerializer, OrderCreateSerializer, TableSerializer,
-)
-from .permissions import (
-    IsOrderTenantStaff, IsGuestOrderOwner,IsWithinOperationalHoursAndLocation
-)
+from .models import Order, OrderItem, Customer, Table, PaymentWebhookLog
+from .serializers import OrderSerializer, OrderCreateSerializer, TableSerializer
+from .permissions import IsOrderTenantStaff, IsGuestOrderOwner, IsWithinOperationalHoursAndLocation
 from .tasks import send_order_paid_notification, send_cash_order_invoice
-from tenants.models import Tenant, MenuItem, VariantOption
+from tenants.models import Tenant, MenuItem
 from tenants.serializers import MenuItemSerializer
-import qrcode
-import io
+
+security_logger = logging.getLogger('security')
 
 # Placeholder: dummy gateway payment
 def initiate_payment_for_order(order: Order):
@@ -62,217 +51,99 @@ def initiate_payment_for_order(order: Order):
             "name": item.menu_item.name
         } for item in order.items.all()],
         "customer_details": {
-            "first_name": order.customer.name,
-            "email": order.customer.email,
+            "first_name": order.customer.name if order.customer else "Pelanggan",
+            "email": order.customer.email if order.customer else "noemail@kantinku.com",
         }
     }
 
     transaction = snap.create_transaction(param)
     return transaction
 
+
 class PopularMenusView(generics.ListAPIView):
     """
     Mengembalikan daftar menu yang paling banyak dipesan (populer)
     dari semua stand yang aktif dan menu yang tersedia.
-    (Versi query yang sudah dioptimalkan)
     """
     serializer_class = MenuItemSerializer
     permission_classes = [AllowAny]
 
     def get_queryset(self):
-        # 1. Hitung 10 menu_item_id terlaris dari tabel OrderItem
-        # Ini adalah query pertama (cepat)
         top_menu_item_ids = OrderItem.objects.values('menu_item_id') \
             .annotate(total_sold=Sum('qty')) \
             .filter(total_sold__gt=0) \
             .order_by('-total_sold') \
             .values_list('menu_item_id', flat=True)[:10]
 
-        # 2. Ambil objek MenuItem yang lengkap berdasarkan 10 ID teratas
-        #    Pastikan juga tenant-nya aktif & item-nya available
-        # Ini adalah query kedua (cepat)
         top_menu_items = MenuItem.objects.filter(
-            pk__in=list(top_menu_item_ids), # Ambil hanya yang ID-nya ada di daftar
+            pk__in=list(top_menu_item_ids),
             available=True,
             tenant__active=True
-        ).prefetch_related('tenant') # Optimalisasi
+        ).prefetch_related('tenant')
 
-        # 3. Buat dictionary untuk memetakan id -> item
         items_map = {item.id: item for item in top_menu_items}
-        
-        # 4. Kembalikan daftar yang sudah terurut berdasarkan 'top_menu_item_ids'
-        #    (karena 'pk__in' tidak menjamin urutan)
         sorted_items = [items_map[item_id] for item_id in top_menu_item_ids if item_id in items_map]
         
         return sorted_items
 
 
-
-class CreateOrderView(APIView):
-  permission_classes = [IsWithinOperationalHoursAndLocation]
-  throttle_classes = [ScopedRateThrottle] # Gunakan Scoped global
-  throttle_scope = 'burst'
-
-  def post(self, request):
-    serializer = OrderCreateSerializer(data=request.data)
-    serializer.is_valid(raise_exception=True)
-
-    data = serializer.validated_data
-    tenant = get_object_or_404(Tenant, pk=data['tenant'], active=True)
-    table = None
-    order_type = 'TAKEAWAY' # Default jika tidak ada meja
-    qr_token = request.data.get('token')
-
-    if qr_token:
-        try:
-            # Dekripsi token. max_age=86400 berarti QR code kedaluwarsa dalam 1 hari (opsional)
-            decoded_data = signing.loads(qr_token)
-            table = Table.objects.get(code=decoded_data['table_code'])
-            order_type = 'DINE_IN' 
-        except (signing.BadSignature, Table.DoesNotExist):
-            raise serializers.ValidationError({"token": "QR Code meja tidak valid atau merupakan hasil manipulasi."})
-
-    customer = None
-    name = data.get('name')
-    email = data.get('email')
-    phone = data.get('phone')
-    if email:
-      customer, _ = Customer.objects.get_or_create(email=email, defaults={'name': name, 'phone': phone})
-      
-    try:
-      with transaction.atomic():
-        items_data = data['items']
-        menu_item_ids = [item['menu_item'] for item in items_data]
-        menu_items_to_update = MenuItem.objects.select_for_update().filter(pk__in=menu_item_ids, tenant=tenant)
-        
-        menu_items_map = {item.pk: item for item in menu_items_to_update}
-
-        for item_data in items_data:
-            menu_item = menu_items_map.get(item_data['menu_item'])
-            if not menu_item or not menu_item.available or menu_item.stock < item_data['qty']:
-                raise serializers.ValidationError(f"Stok untuk '{menu_item.name if menu_item else 'item'}' tidak mencukupi atau tidak tersedia.")
-
-        cashier_pin_db = None
-        plain_pin_for_email = None 
-
-        if data['payment_method'] == 'CASH':
-            while True:
-                pin = generate_order_pin() # PIN Asli (contoh: 123456)
-                
-                # Buat Hash SHA-256 dari PIN untuk disimpan di DB
-                hashed_pin = make_password(pin)
-                
-                if not Order.objects.filter(cashier_pin=hashed_pin, status__in=['AWAITING_PAYMENT', 'PAID']).exists():
-                    cashier_pin_db = hashed_pin     # Simpan Hash ke DB
-                    plain_pin_for_email = pin       # Simpan Asli untuk Email & Respons Frontend
-                    break
-
-        order = Order.objects.create(
-          tenant=tenant, table=table, customer=customer,
-          payment_method=data['payment_method'],
-          status = 'AWAITING_PAYMENT',
-          order_type=order_type,
-          cashier_pin=cashier_pin_db, # Simpan HASH di database
-          expired_at = timezone.now() + timezone.timedelta(minutes=10)
-        )
-
-        order_items_to_create = []
-        total = 0
-        for item_data in items_data:
-            menu_item = menu_items_map[item_data['menu_item']]
-            
-            variant_ids = item_data.get('variants', [])
-            total_variant_price = 0
-            if variant_ids:
-                valid_variants = VariantOption.objects.filter(
-                    id__in=variant_ids,
-                    group__menu_items=menu_item
-                )
-                if len(valid_variants) != len(variant_ids):
-                    raise serializers.ValidationError("Terdapat varian yang tidak valid untuk menu yang dipilih.")
-                
-                for variant in valid_variants:
-                    total_variant_price += variant.price
-
-            item_final_price = menu_item.price + total_variant_price
-            
-            order_item_obj = OrderItem(
-                order=order,
-                menu_item=menu_item,
-                qty=item_data['qty'],
-                price=item_final_price,
-                note=item_data.get('note', '')
-            )
-            
-            order_items_to_create.append(order_item_obj)
-            total += item_final_price * item_data['qty']
-            menu_item.stock -= item_data['qty']
-        
-        MenuItem.objects.bulk_update(menu_items_to_update, ['stock'])
-        created_items = OrderItem.objects.bulk_create(order_items_to_create)
-
-        item_variant_relations = []
-        for i, item_data in enumerate(items_data):
-            variant_ids = item_data.get('variants', [])
-            if variant_ids:
-                order_item_id = created_items[i].id
-                for variant_id in variant_ids:
-                    item_variant_relations.append(
-                        OrderItem.selected_variants.through(
-                            orderitem_id=order_item_id,
-                            variantoption_id=variant_id
-                        )
-                    )
-                
-        if item_variant_relations:
-            OrderItem.selected_variants.through.objects.bulk_create(item_variant_relations)
-        
-        order.total = total
-        order.save(update_fields=['total'])
-
-    except serializers.ValidationError as e:
-        return Response(e.detail, status=status.HTTP_400_BAD_REQUEST)
-    
-    payment_info = None
-    if order.payment_method.strip().upper() == 'TRANSFER':
-        payment_info = initiate_payment_for_order(order)
-    elif order.payment_method.strip().upper() == 'CASH':
-        transaction.on_commit(lambda: send_cash_order_invoice.delay(order.pk, plain_pin_for_email))
-            
-    if not request.user.is_authenticated:
-        guest_uuids = request.session.get('guest_order_uuids', [])
-        if str(order.uuid) not in guest_uuids:
-            guest_uuids.append(str(order.uuid))
-            request.session['guest_order_uuids'] = guest_uuids
-        
-    guest_token = hmac.new(
-        settings.SECRET_KEY.encode(),
-        str(order.uuid).encode(),
-        hashlib.sha256
-    ).hexdigest()
-        
-    order_response_data = OrderSerializer(order, context={'request': request}).data
-        
-    if plain_pin_for_email:
-        order_response_data['cashier_pin'] = plain_pin_for_email
-
-    # PERBAIKAN 2: Tambahkan 'snap_token' agar bisa dibaca oleh Frontend
-    resp = {
-        'order': order_response_data,
-        'payment': payment_info,
-        'token': guest_token,
-        'snap_token': payment_info.get('token') if payment_info else None
-    }
-    return Response(resp, status=status.HTTP_201_CREATED)
-
-
-security_logger = logging.getLogger('security')
-
-    
-class MidtransWehboohView(APIView):
-    permission_classes = [permissions.AllowAny]
+class OrderCreateAPIView(APIView):
+    """
+    Endpoint tunggal yang bersih untuk membuat pesanan (Dine-In & Takeaway).
+    Logika database dan validasi ditangani oleh OrderCreateSerializer.create().
+    """
+    permission_classes = [IsWithinOperationalHoursAndLocation]
     throttle_classes = [ScopedRateThrottle]
-    throttle_scope = 'webhook' # Batasi spam rate
+    throttle_scope = 'burst'
+
+    def post(self, request, *args, **kwargs):
+        serializer = OrderCreateSerializer(data=request.data, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        
+        # Eksekusi method create() di serializer dengan Atomic Transaction
+        order = serializer.save()
+
+        # Handle Payment Gateway & Email Notifications
+        payment_info = None
+        if order.payment_method == 'TRANSFER':
+            payment_info = initiate_payment_for_order(order)
+        elif order.payment_method == 'CASH':
+            # Kirim PIN asli ke email pembeli via Celery
+            transaction.on_commit(lambda: send_cash_order_invoice.delay(order.pk, order.cashier_pin))
+
+        # Handle Guest Session
+        if not request.user.is_authenticated:
+            guest_uuids = request.session.get('guest_order_uuids', [])
+            if str(order.uuid) not in guest_uuids:
+                guest_uuids.append(str(order.uuid))
+                request.session['guest_order_uuids'] = guest_uuids
+
+        # Buat HMAC Guest Token
+        guest_token = hmac.new(
+            settings.SECRET_KEY.encode(),
+            str(order.uuid).encode(),
+            hashlib.sha256
+        ).hexdigest()
+
+        order_response_data = OrderSerializer(order, context={'request': request}).data
+
+        resp = {
+            'order': order_response_data,
+            'payment': payment_info,
+            'token': guest_token,
+            'snap_token': payment_info.get('token') if payment_info else None
+        }
+        return Response(resp, status=status.HTTP_201_CREATED)
+
+
+class MidtransWebhookView(APIView):
+    """
+    Webhook untuk menerima callback pembayaran otomatis dari Midtrans.
+    Dilengkapi dengan perlindungan HMAC Timing Attack dan Idempotency.
+    """
+    permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'webhook'
 
     def post(self, request):
         payload = request.data
@@ -282,25 +153,20 @@ class MidtransWehboohView(APIView):
         transaction_id = payload.get("transaction_id")
         signature_key = payload.get("signature_key")
 
-        # 1. Sanitasi Payload (Poin 7)
         safe_payload = payload.copy()
         sensitive_keys = ['customer_details', 'va_numbers', 'bca_va_number', 'payment_amounts']
         for key in sensitive_keys:
             if key in safe_payload:
                 safe_payload[key] = "***REDACTED***"
 
-        # 2. Validasi Signature (Hmac Compare Digest)
         server_key = settings.MIDTRANS_SERVER_KEY
         raw_signature = f"{order_id}{payload.get('status_code')}{gross_amount}{server_key}"
         calculated_signature = hashlib.sha512(raw_signature.encode()).hexdigest()
         
         if not hmac.compare_digest(str(signature_key), calculated_signature):
-            # Hook untuk Wazuh (Poin 8 - Warning/High)
             security_logger.warning(f"SECURITY_ALERT: Invalid Signature detected for Order {order_id}. Possible spoofing.")
             return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
 
-        # 3. Idempotency Key Kuat (Poin 1)
-        # Kombinasi transaction_id + status agar callback update (ex: pending -> settlement) tetap masuk
         log_qs = PaymentWebhookLog.objects.filter(transaction_id=transaction_id, status=transaction_status)
         if log_qs.exists():
             return Response({"detail": "Idempotency: Already processed"}, status=200)
@@ -309,13 +175,10 @@ class MidtransWehboohView(APIView):
             with transaction.atomic():
                 order = Order.objects.select_for_update().get(references_code=order_id)
                 
-                # 4. Validasi Gross Amount (Poin 10 - CRITICAL)
-                # Gunakan Decimal agar tidak ada presisi float yang meleset
                 if Decimal(str(gross_amount)) != order.total:
                     security_logger.critical(f"SECURITY_ALERT: Amount Mismatch! Order {order_id} total is {order.total}, but webhook sent {gross_amount}.")
                     return Response({"detail": "Amount Mismatch"}, status=status.HTTP_400_BAD_REQUEST)
 
-                # Simpan Log dengan payload tersanitasi
                 PaymentWebhookLog.objects.create(
                     order=order,
                     transaction_id=transaction_id,
@@ -325,11 +188,9 @@ class MidtransWehboohView(APIView):
                 )
 
                 if order.status == 'PAID':
-                    # Replay detected logic (Poin 8)
                     security_logger.info(f"Replay/Late callback detected for already PAID order {order_id}.")
                     return Response({"detail": "Already PAID"}, status=200)
 
-                # --- Lanjutkan logika update status settlement/cancel seperti biasa ---
                 if transaction_status in ['settlement', 'capture']:
                     order.status = "PAID"
                     order.paid_at = timezone.now()
@@ -343,8 +204,47 @@ class MidtransWehboohView(APIView):
         
         return Response({"detail": "OK"}, status=200)
 
+
+class OrderListView(generics.ListAPIView):
+    """
+    View untuk menampilkan daftar semua pesanan dengan filter status & tenant.
+    """
+    serializer_class = OrderSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        Order.objects.filter(
+            status='AWAITING_PAYMENT',
+            expired_at__lt=timezone.now()
+        ).update(status='EXPIRED')
+        
+        base_qs = Order.objects.all()
+        satu_hari_lalu = timezone.now() - timedelta(days=1)
+        base_qs = base_qs.exclude(
+            status='EXPIRED',
+            created_at__lt=satu_hari_lalu
+        )
+
+        if not user.is_staff and not user.groups.filter(name='Cashier').exists():
+            user_tenant_ids = user.tenants.values_list('id', flat=True)
+            base_qs = base_qs.filter(tenant_id__in=user_tenant_ids)
+            base_qs = base_qs.exclude(status__in=['EXPIRED', 'CANCELED', 'COMPLETED'])
+        
+        status_param = self.request.query_params.get('status')
+        payment_method = self.request.query_params.get('payment_method')
+
+        if status_param:
+            base_qs = base_qs.filter(status=status_param)
+        if payment_method:
+            base_qs = base_qs.filter(payment_method=payment_method)
+
+        return base_qs.prefetch_related(
+            'items', 'items__menu_item', 'tenant', 'table'
+        ).order_by('-created_at')
+
+
 class OrderDetailView(generics.RetrieveAPIView):
-    # Menggunakan select_related agar data customer tersedia saat pengecekan permission
     queryset = Order.objects.all().select_related('customer', 'tenant')
     serializer_class = OrderSerializer
     permission_classes = [IsOrderTenantStaff | IsGuestOrderOwner]
@@ -353,38 +253,36 @@ class OrderDetailView(generics.RetrieveAPIView):
 
     def get_object(self):
         obj = super().get_object()
-        
-        # Logika Update Status Expired tetap bisa ditaruh di sini
         if obj.expired_at and timezone.now() > obj.expired_at and obj.status != 'EXPIRED':
             obj.status = 'EXPIRED'
             obj.save(update_fields=['status'])
-            
         return obj
-  
+
+
 class CancelOrderView(APIView):
-  permission_classes = [IsOrderTenantStaff | IsGuestOrderOwner]
+    permission_classes = [IsOrderTenantStaff | IsGuestOrderOwner]
   
-  def post(self, request, order_uuid):
-    order = get_object_or_404(Order, uuid=order_uuid)
-    self.check_object_permissions(request, order)
-    
-    if order.status.upper() == 'PAID':
-      return Response({"detail": "Order sudah dibayar, tidak bisa dibatalkan"}, status=status.HTTP_400_BAD_REQUEST)
+    def post(self, request, order_uuid):
+        order = get_object_or_404(Order, uuid=order_uuid)
+        self.check_object_permissions(request, order)
+        
+        if order.status.upper() == 'PAID':
+            return Response({"detail": "Order sudah dibayar, tidak bisa dibatalkan"}, status=status.HTTP_400_BAD_REQUEST)
 
-    if order.status == 'AWAITING_PAYMENT':
-      if order.expired_at and timezone.now() > order.expired_at:
-        order.status = 'EXPIRED'
-        order.save(update_fields=['status'])
-      
-      order.cancel_and_restock()
-      return Response({"detail": "Order berhasil dibatalkan"}, status=status.HTTP_200_OK)
-    elif order.status == 'EXPIRED':
-      order.status = 'EXPIRED'
-      order.cancel_and_restock()
-      return Response({"detail": "Order kedaluwarsa berhasil dibatalkan"}, status=status.HTTP_200_OK)
+        if order.status == 'AWAITING_PAYMENT':
+            if order.expired_at and timezone.now() > order.expired_at:
+                order.status = 'EXPIRED'
+                order.save(update_fields=['status'])
+            order.cancel_and_restock()
+            return Response({"detail": "Order berhasil dibatalkan"}, status=status.HTTP_200_OK)
+        elif order.status == 'EXPIRED':
+            order.status = 'EXPIRED'
+            order.cancel_and_restock()
+            return Response({"detail": "Order kedaluwarsa berhasil dibatalkan"}, status=status.HTTP_200_OK)
 
-    return Response({"detail": f"Order dengan status {order.status} tidak dapat dibatalkan."}, status=status.HTTP_400_BAD_REQUEST)
-  
+        return Response({"detail": f"Order dengan status {order.status} tidak dapat dibatalkan."}, status=status.HTTP_400_BAD_REQUEST)
+
+
 class UpdateOrderStatusView(APIView):
     permission_classes = [IsAuthenticated, IsOrderTenantStaff]
 
@@ -397,7 +295,6 @@ class UpdateOrderStatusView(APIView):
     
     def patch(self, request, order_uuid):
         order = get_object_or_404(Order, uuid=order_uuid)
-        
         self.check_object_permissions(request, order)
         
         new_status = request.data.get('status')
@@ -418,101 +315,7 @@ class UpdateOrderStatusView(APIView):
         order.save(update_fields=['status'])
         
         return Response(OrderSerializer(order).data, status=status.HTTP_200_OK)
-  
-class OrderCreateView(generics.CreateAPIView):
-    serializer_class = OrderCreateSerializer
-    throttle_classes = [ScopedRateThrottle]
-    throttle_scope = 'burst'
 
-    @transaction.atomic
-    def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        
-        items_data = serializer.validated_data['items']
-        tenant = serializer.validated_data['tenant']
-        
-        menu_item_ids = [item['menu_item'] for item in items_data]
-        
-        menu_items = MenuItem.objects.select_for_update().filter(
-            id__in=menu_item_ids, 
-            tenant_id=tenant
-        )
-        
-        menu_items_map = {item.id: item for item in menu_items}
-
-        for item_data in items_data:
-            menu_item_id = item_data['menu_item']
-            menu_item_obj = menu_items_map.get(menu_item_id)
-            
-            if not menu_item_obj:
-                raise serializers.ValidationError(
-                    f"Menu item dengan ID {menu_item_id} tidak ditemukan untuk tenant ini."
-                )
-            
-            if not menu_item_obj.available:
-                 raise serializers.ValidationError(f"'{menu_item_obj.name}' sedang tidak tersedia.")
-
-            if menu_item_obj.stock < item_data['qty']:
-                raise serializers.ValidationError(
-                    f"Stok untuk '{menu_item_obj.name}' tidak mencukupi. Sisa: {menu_items_map[menu_item_id].stock}."
-                )
-            
-            menu_item_obj.stock -= item_data['qty']
-
-        MenuItem.objects.bulk_update(menu_items_map.values(), ['stock'])
-        
-        return super().create(request, *args, **kwargs)
-
-# --- PERBAIKAN TOTAL UNTUK MASALAH DUPLIKAT DAN ASSERTIONERROR ---
-class OrderListView(generics.ListAPIView):
-    """
-    View untuk menampilkan daftar semua pesanan.
-    """
-    serializer_class = OrderSerializer
-    permission_classes = [IsAuthenticated]
-
-    def get_queryset(self):
-        user = self.request.user
-        Order.objects.filter(
-            status='AWAITING_PAYMENT',
-            expired_at__lt=timezone.now()
-        ).update(status='EXPIRED')
-        
-        base_qs = Order.objects.all()
-        satu_hari_lalu = timezone.now() - timedelta(days=1)
-        base_qs = base_qs.exclude(
-            status='EXPIRED',
-            created_at__lt=satu_hari_lalu
-        )
-
-        # --- PERBAIKAN LOGIKA IZIN ---
-        # Jika user BUKAN Admin (is_staff) DAN BUKAN Kasir
-        if not user.is_staff and not user.groups.filter(name='Cashier').exists():
-            user_tenant_ids = user.tenants.values_list('id', flat=True)
-            # PERBAIKAN: Pastikan status PAID diizinkan untuk dilihat Tenant
-            # Tambahkan filter agar Tenant hanya melihat pesanan yang belum selesai
-            base_qs = base_qs.filter(tenant_id__in=user_tenant_ids)
-        
-            # JANGAN EXCLUDE 'PAID', karena Kanban Tenant butuh status PAID untuk "Pesanan Baru"
-            base_qs = base_qs.exclude(status__in=['EXPIRED', 'CANCELED', 'COMPLETED'])
-        
-        # Admin dan Kasir akan melewati 'if' dan mendapatkan Order.objects.all()
-        
-        # --- TAMBAHAN: TERAPKAN FILTER DARI URL ---
-        status = self.request.query_params.get('status')
-        payment_method = self.request.query_params.get('payment_method')
-
-        if status:
-            base_qs = base_qs.filter(status=status)
-        if payment_method:
-            base_qs = base_qs.filter(payment_method=payment_method)
-        # --- AKHIR TAMBAHAN ---
-
-        # 4. Lakukan prefetch dan order_by SETELAH filter
-        return base_qs.prefetch_related(
-            'items', 'items__menu_item', 'tenant', 'table'
-        ).order_by('-created_at')
 
 class TableQRCodeView(APIView):
     permission_classes = [permissions.AllowAny] 
@@ -521,10 +324,7 @@ class TableQRCodeView(APIView):
         table = get_object_or_404(Table, code=table_code)
         frontend_base_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:3000')
         
-        # PERBAIKAN KEAMANAN: Enkripsi kode meja
         encrypted_token = signing.dumps({'table_code': table.code})
-        
-        # Masukkan token enkripsi ke dalam URL QR, BUKAN nama mejanya
         qr_url = f"{frontend_base_url}/?token={encrypted_token}"
         
         qr = qrcode.QRCode(version=1, error_correction=qrcode.constants.ERROR_CORRECT_L, box_size=10, border=4)
@@ -532,21 +332,19 @@ class TableQRCodeView(APIView):
         qr.make(fit=True)
 
         img = qr.make_image(fill_color="black", back_color="white")
-        
         buffer = io.BytesIO()
         img.save(buffer, "PNG")
         buffer.seek(0)
         
         return HttpResponse(buffer, content_type="image/png")
 
+
 class TakeawayQRCodeView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def get(self, request, tenant_id):
         tenant = get_object_or_404(Tenant, pk=tenant_id)
-        
-        # PERBAIKAN: Gunakan FRONTEND_URL seperti di TableQRCodeView
-        frontend_base_url = getattr(settings, 'FRONTEND_URL')
+        frontend_base_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:3000')
         frontend_url = f"{frontend_base_url}/?tenant={tenant.pk}&order_type=TAKEAWAY"
         
         qr = qrcode.QRCode(version=1, box_size=10, border=4)
@@ -559,25 +357,19 @@ class TakeawayQRCodeView(APIView):
         
         return HttpResponse(buffer, content_type="image/png")
         
+
 class TableListCreateView(generics.ListCreateAPIView):
-    """
-    GET  : Menampilkan seluruh meja
-    POST : Menambahkan meja baru
-    """
     queryset = Table.objects.all().order_by("code")
     serializer_class = TableSerializer
     permission_classes = [permissions.IsAdminUser]
 
 
 class TableDetailView(generics.DestroyAPIView):
-    """
-    DELETE : Menghapus meja
-    """
     queryset = Table.objects.all()
     serializer_class = TableSerializer
     permission_classes = [permissions.IsAdminUser]
     
-# --- PERBAIKAN TOTAL UNTUK MASALAH DUPLIKAT ---
+
 class ReportDashboardAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -585,14 +377,13 @@ class ReportDashboardAPIView(APIView):
         one_week_ago = timezone.now() - timedelta(days=7)
         user = request.user 
         
-        # Buat filter dasar untuk digunakan kembali
         tenant_filter = models.Q()
+        user_tenant_ids = []
         if not user.is_staff:
             user_tenant_ids = user.tenants.values_list('id', flat=True)
             tenant_filter = models.Q(tenant_id__in=user_tenant_ids)
         
-        # Hanya admin yang bisa melihat statistik utama (total revenue, dll)
-        main_stats = {'total_revenue': 0, 'total_orders': 0, 'avg_order_value': 0, 'active_customers': 0 }
+        main_stats = {'total_revenue': 0, 'total_orders': 0, 'avg_order_value': 0, 'active_customers': 0}
         if user.is_staff:
             total_revenue = Order.objects.filter(status='PAID').aggregate(total=Sum('total'))['total'] or 0
             total_orders = Order.objects.count()
@@ -619,8 +410,12 @@ class ReportDashboardAPIView(APIView):
             .annotate(orders=Count('id')) \
             .order_by('hour')
 
-        top_selling_products = OrderItem.objects.filter(order__tenant_id__in=user.tenants.values_list(
-            'id', flat=True) if not user.is_staff else Tenant.objects.values_list('id', flat=True)) \
+        # Optimasi Query: Tidak perlu filter jika yang login adalah Admin
+        top_selling_qs = OrderItem.objects.all()
+        if not user.is_staff:
+            top_selling_qs = top_selling_qs.filter(order__tenant_id__in=user_tenant_ids)
+
+        top_selling_products = top_selling_qs \
             .values('menu_item__name') \
             .annotate(total_sold=Sum('qty'), total_revenue=Sum('price')) \
             .order_by('-total_sold')[:5]
@@ -630,8 +425,8 @@ class ReportDashboardAPIView(APIView):
             stand_performance_qs = stand_performance_qs.filter(id__in=user_tenant_ids)
 
         stand_performance = stand_performance_qs.annotate(
-            total_orders_today=Count('orders', filter=models.Q(orders__created_at__date=timezone.now().date())),
-            total_revenue_today=Sum('orders__total', filter=models.Q(orders__status='PAID', orders__created_at__date=timezone.now().date()))
+            total_orders_today=Count('orders', filter=models.Q(orders__created_at__date=today)),
+            total_revenue_today=Sum('orders__total', filter=models.Q(orders__status='PAID', orders__created_at__date=today))
         ).order_by('-total_revenue_today')
 
         formatted_stand_performance = [

@@ -2,6 +2,7 @@ from rest_framework import serializers
 from tenants.serializers import MenuItemSerializer, StandSerializer, VariantOptionSerializer
 from .models import Customer, MenuItem, Order, OrderItem, Tenant, Table
 from django.contrib.auth.models import User, Group
+from django.db import transaction
 import random 
 import string 
 
@@ -46,6 +47,65 @@ class OrderCreateSerializer(serializers.Serializer):
         if valid_items_count != len(item_ids):
             raise serializers.ValidationError("Terdapat satu atau lebih item yang bukan milik tenant ini.")
         return data
+        
+    def create(self, validated_data):
+        items_data = validated_data.pop('items')
+        
+        # 1. Ambil data customer dari INPUT FORM FRONTEND ("virrel yaw")
+        name = validated_data.pop('name')
+        email = validated_data.pop('email')
+        phone = validated_data.pop('phone', None)
+        
+        # 2. Cari atau buat Customer baru berdasarkan Email
+        customer, created = Customer.objects.get_or_create(
+            email=email,
+            defaults={'name': name, 'phone': phone}
+        )
+        
+        # Jika customer lama memesan tapi memakai nama baru di form ("virrel yaw"),
+        # kita perbarui namanya di database!
+        if not created and customer.name != name:
+            customer.name = name
+            if phone:
+                customer.phone = phone
+            customer.save(update_fields=['name', 'phone'])
+
+        # 3. Handle Tabel (Jika ada input kode tabel)
+        table_code = validated_data.pop('table', None)
+        table_obj = None
+        if table_code:
+            table_obj = Table.objects.filter(code=table_code).first()
+
+        # 4. Buat Order Baru (Tanpa mengaitkan ke request.user)
+        order = Order.objects.create(
+            customer=customer,
+            table=table_obj,
+            **validated_data
+        )
+
+        # 5. Buat OrderItem beserta Varian-nya
+        for item_data in items_data:
+            variants = item_data.pop('variants', [])
+            menu_item_id = item_data.pop('menu_item')
+            
+            # Ambil object menu
+            menu_item = MenuItem.objects.get(id=menu_item_id)
+            
+            order_item = OrderItem.objects.create(
+                order=order,
+                menu_item=menu_item,
+                price=menu_item.price, # Simpan harga saat transaksi terjadi
+                **item_data
+            )
+            
+            # Daftarkan varian jika ada
+            if variants:
+                order_item.selected_variants.set(variants)
+
+        # 6. Hitung total akhir (Termasuk harga varian)
+        order.calculate_total()
+        
+        return order
   
 class OrderItemSerializer(serializers.ModelSerializer):
     menu_item = MenuItemSerializer()

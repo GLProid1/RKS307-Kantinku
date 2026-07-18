@@ -2,10 +2,10 @@ from django.urls import path
 from django.conf import settings
 from django.conf.urls.static import static
 from .views import (
-    # Orders Views
-    CreateOrderView, MidtransWehboohView, 
+    # Orders Views (PERBAIKAN: Gunakan nama kelas yang baru dan bebas typo)
+    OrderCreateAPIView, MidtransWebhookView, 
     OrderDetailView, UpdateOrderStatusView, CancelOrderView, OrderListView,
-    TableQRCodeView, TakeawayQRCodeView, PopularMenusView,TableListCreateView,
+    TableQRCodeView, TakeawayQRCodeView, PopularMenusView, TableListCreateView,
     TableDetailView,
     
     # ViewSets / Dashboard
@@ -28,8 +28,8 @@ urlpatterns = [
     # Menghasilkan URL: /api/orders/all/ (Frontend memanggil ini untuk list pesanan)
     path('all/', OrderListView.as_view(), name='order-list'),
     
-    # Menghasilkan URL: /api/orders/create/
-    path('create/', CreateOrderView.as_view(), name='create-order'),
+    # [PERBAIKAN KRUSIAL] Menghasilkan URL: /api/orders/create/
+    path('create/', OrderCreateAPIView.as_view(), name='create-order'),
     
     # Menghasilkan URL: /api/orders/<uuid>/
     path('<uuid:order_uuid>/', OrderDetailView.as_view(), name='order-detail'),
@@ -40,9 +40,9 @@ urlpatterns = [
     # Menghasilkan URL: /api/orders/<uuid>/status/ (Frontend memanggil ini untuk update status)
     path('<uuid:order_uuid>/status/', UpdateOrderStatusView.as_view(), name='update-order-status'),
     
-    # 4. Webhooks (Payment)
+    # 4. Webhooks (Payment) - [PERBAIKAN TYPO NAMA KELAS]
     # Menghasilkan URL: /api/orders/webhooks/payment/
-    path('webhooks/payment/', MidtransWehboohView.as_view(), name='payment-webhooks'),
+    path('webhooks/payment/', MidtransWebhookView.as_view(), name='payment-webhooks'),
     
     # 5. QR Code Generation
     path("tables/", TableListCreateView.as_view(), name="table-list-create"),

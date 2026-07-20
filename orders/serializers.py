@@ -26,6 +26,7 @@ class OrderCreateSerializer(serializers.Serializer):
     tenant = serializers.IntegerField()
     table = serializers.CharField(required=False, allow_blank=True)
     token = serializers.CharField(required=False, allow_blank=True)
+    order_type = serializers.CharField(required=True)
     name = serializers.CharField(max_length=100, required=True)
     email = serializers.EmailField(required=True)
     phone = serializers.CharField(required=False, allow_blank=True)
@@ -56,6 +57,7 @@ class OrderCreateSerializer(serializers.Serializer):
         name = validated_data.pop('name')
         email = validated_data.pop('email')
         phone = validated_data.pop('phone', None)
+        validated_data.pop('token', None)
         
         # 2. Cari atau buat Customer baru berdasarkan Email
         customer, created = Customer.objects.get_or_create(
